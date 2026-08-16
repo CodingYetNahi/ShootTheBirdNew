@@ -38,7 +38,7 @@ import {
   sendRoomSabotage,
   sendRoomTaunt,
   completeMultiplayerMatch,
-  subscribeToMultiplayerRoom
+  subscribeToMultiplayerRoom, loadDailyChallenge, saveDailyChallengeProgress, claimDailyChallengeReward
 } from './lib/firebase';
 import { MultiplayerModal } from './components/MultiplayerModal';
 import { MatchSummaryModal } from './components/MatchSummaryModal';
@@ -70,7 +70,7 @@ import {
   playSoundSabotageAlert,
   startBackgroundMusic,
   stopBackgroundMusic,
-  AudioSystem
+  AudioSystem, duckMusic, restoreMusic
 } from './lib/audio';
 import {
   entityConfigs,
@@ -91,6 +91,7 @@ import {
   MatchPerformanceStats,
   LifetimeStats
 } from './types';
+import { challengeLabels, getDailyChallenge, safePlayerId, ChallengeBird } from './lib/dailyChallenge';
 
 const STORAGE_KEY = 'birdShooterData_v7';
 const SETTINGS_KEY = 'birdShooter_userSettings_v7';
@@ -315,6 +316,10 @@ export default function App() {
   const [globalRanks, setGlobalRanks] = useState<{ name: string; score: number }[]>([]);
   const [showVolumePopup, setShowVolumePopup] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const dailyChallenge = useRef(getDailyChallenge()).current;
+  const [dailyProgress, setDailyProgress] = useState<Record<ChallengeBird, number>>({ normal: 0, fast: 0, small: 0 });
+  const [dailyTime, setDailyTime] = useState(dailyChallenge.timeLimit);
+  const [dailyClaimed, setDailyClaimed] = useState(false);
 
   // Match Performance State
   const [currentWeather, setCurrentWeather] = useState<WeatherType>('clear');
@@ -361,6 +366,11 @@ export default function App() {
     highestCombo: 0,
     powerUpsCollected: 0,
     reactionTimes: [] as number[],
+    dailyProgress: { normal: 0, fast: 0, small: 0 } as Record<ChallengeBird, number>,
+    dailyTime: dailyChallenge.timeLimit,
+    dailyClaimed: false,
+    dailyClaimPending: false,
+    lastDailySecond: dailyChallenge.timeLimit,
   });
 
   const showToast = (msg: string) => {
@@ -369,6 +379,13 @@ export default function App() {
       setToastMessage(null);
     }, 2500);
   };
+
+  useEffect(() => {
+    const shouldDuck = Boolean(toastMessage) || showVolumePopup || showMultiplayerModal || (gameState !== 'PLAYING' && gameState !== 'MENU');
+    if (!shouldDuck) return;
+    duckMusic(audioSysRef.current, data.settings.music ? data.settings.musicVolume : 0);
+    return () => restoreMusic(audioSysRef.current, data.settings.music ? data.settings.musicVolume : 0);
+  }, [toastMessage, showVolumePopup, showMultiplayerModal, gameState, data.settings.music, data.settings.musicVolume]);
 
   // Subscribe to real-time leaderboard
   useEffect(() => {
@@ -508,8 +525,8 @@ export default function App() {
     g.multiplier = 1;
     g.elapsed = 0;
     g.spawnTimer = 0.2;
-    g.planeTimer = 3.5 + Math.random() * 4.0;
-    g.ufoTimer = 6.5 + Math.random() * 5.0;
+    g.planeTimer = 15 + Math.random() * 5;
+    g.ufoTimer = 30 + Math.random() * 5;
     g.blankoutTimer = 0;
     g.lastAwarded40kMultiplier = 0;
     g.birds = [];
@@ -529,6 +546,11 @@ export default function App() {
     g.highestCombo = 0;
     g.powerUpsCollected = 0;
     g.reactionTimes = [];
+    g.dailyProgress = { normal: 0, fast: 0, small: 0 };
+    g.dailyTime = dailyChallenge.timeLimit;
+    g.dailyClaimed = false;
+    g.dailyClaimPending = false;
+    g.lastDailySecond = dailyChallenge.timeLimit;
     g.lastTime = performance.now();
 
     setScore(0);
@@ -539,12 +561,23 @@ export default function App() {
     setActiveBuff(null);
     setCurrentWeather('clear');
     setSummaryStats(null);
+    setDailyProgress(g.dailyProgress);
+    setDailyTime(dailyChallenge.timeLimit);
+    setDailyClaimed(false);
     setGameState('PLAYING');
 
     unlockAudio();
     if (data.settings.music) {
       startBackgroundMusic(audioSysRef.current, data.settings.musicVolume);
     }
+    const playerId = safePlayerId(data.playerName || nameInput || 'Player');
+    loadDailyChallenge(playerId, dailyChallenge.date).then(record => {
+      if (!record) return;
+      g.dailyProgress = { normal: record.progress?.normal || 0, fast: record.progress?.fast || 0, small: record.progress?.small || 0 };
+      g.dailyClaimed = Boolean(record.rewardClaimed);
+      setDailyProgress({ ...g.dailyProgress });
+      setDailyClaimed(g.dailyClaimed);
+    });
   };
 
   const handleStartDuel = (room: MultiplayerRoomData, isHost: boolean) => {
@@ -608,15 +641,18 @@ export default function App() {
     let key = 'normal';
     const isUfoReady = g.ufoTimer <= 0;
     const isPlaneReady = g.planeTimer <= 0;
+    const hasUfo = activeEntities.some((e: any) => e.key === 'ufo');
+    const hasPlane = activeEntities.some((e: any) => e.key === 'plane');
+    const hasHazard = activeEntities.some((e: any) => e.isDangerous);
 
-    if (isUfoReady && Math.random() < 0.45) {
+    if (isUfoReady && !hasUfo) {
       key = 'ufo';
-      g.ufoTimer = 10.0 + Math.random() * 8.0;
+      g.ufoTimer = 30 + Math.random() * 5;
       playSoundUfoSpawn(audioSysRef.current);
       showToast('🛸 WARNING: ALIEN UFO INCOMING! DESTROY OR ESCAPE (-5% PENALTY)!');
-    } else if (isPlaneReady && Math.random() < 0.35) {
+    } else if (isPlaneReady && !hasPlane) {
       key = 'plane';
-      g.planeTimer = 7.0 + Math.random() * 8.0;
+      g.planeTimer = 15 + Math.random() * 5;
     } else {
       const r = Math.random();
       if (r < 0.28) key = 'normal';
@@ -627,6 +663,7 @@ export default function App() {
       else if (r < 0.90) key = 'skull_50';
       else if (r < 0.96) key = 'rare';
       else key = 'armored';
+      if ((key === 'hazard_25' || key === 'skull_50') && hasHazard) key = 'normal';
     }
 
     const type = entityConfigs[key];
@@ -842,7 +879,7 @@ export default function App() {
           g.birdsHunted++;
         }
 
-        // Check if UFO hit -> triggers 2s EMP blackout
+        // UFO is a score-only bonus; multiplayer sabotage targets the rival separately
         if (hitTarget.key === 'ufo') {
           g.ufoKills++;
           const ufoBonus = Math.floor(200 * g.multiplier * (isCritical ? 2.5 : 1)); // 5:1 scaled (1000 -> 200)
@@ -851,16 +888,13 @@ export default function App() {
           g.multiplier = Math.min(12, Math.max(1, Math.floor(g.combo / 2) + 1));
           g.highestCombo = Math.max(g.highestCombo, g.combo);
 
-          // Trigger 2-second blackout on UFO hit
-          g.blankoutTimer = 2.0;
           playSoundUfoExplode(sys);
-          playSoundUfoEmp(sys);
-          showToast(`🛸 UFO DESTROYED! +${ufoBonus.toLocaleString()} PTS & EMP BLACKOUT (2s)!`);
+          showToast(`🛸 UFO DESTROYED! +${ufoBonus.toLocaleString()} BONUS!`);
 
           g.floatingTexts.push({
             x: hitTarget.x,
             y: hitTarget.y - 15,
-            text: `🛸 +${ufoBonus} UFO EMP!`,
+            text: `🛸 +${ufoBonus} BONUS!`,
             color: '#22c55e',
             life: 1.4,
             maxLife: 1.4,
@@ -889,8 +923,6 @@ export default function App() {
             });
           } else {
             const penaltyPct = hitTarget.penaltyPercent || 25;
-            const lostScore = Math.floor(g.score * (penaltyPct / 100));
-            g.score = Math.max(0, g.score - lostScore);
             g.combo = 0;
             g.multiplier = 1;
             setShowCombo(false);
@@ -900,14 +932,14 @@ export default function App() {
             playSoundDangerPenalty(sys, penaltyPct);
             showToast(
               hitTarget.key === 'skull_50'
-                ? `☠️ CURSED RAVEN HIT! -50% SCORE & -1 ❤️ HEART!`
-                : `⚠️ HAZARD BIRD HIT! -25% SCORE & -1 ❤️ HEART!`
+                ? `☠️ CURSED RAVEN HIT! -1 ❤️ HEART!`
+                : `⚠️ HAZARD BIRD HIT! -1 ❤️ HEART!`
             );
 
             g.floatingTexts.push({
               x: hitTarget.x,
               y: hitTarget.y - 15,
-              text: penaltyPct === 50 ? '☠️ -50% & -1 ❤️' : '⚠️ -25% & -1 ❤️',
+              text: '⚠️ -1 ❤️',
               color: penaltyPct === 50 ? '#ef4444' : '#f59e0b',
               life: 1.3,
               maxLife: 1.3,
@@ -933,6 +965,26 @@ export default function App() {
           if (isPlane) {
             playSoundBonusPlane(sys);
           } else {
+            if ((['normal', 'fast', 'small'] as string[]).includes(hitTarget.key) && g.dailyTime > 0 && !g.dailyClaimed) {
+              const birdKey = hitTarget.key as ChallengeBird;
+              g.dailyProgress[birdKey] = Math.min(dailyChallenge.targets[birdKey], g.dailyProgress[birdKey] + 1);
+              setDailyProgress({ ...g.dailyProgress });
+              const playerId = safePlayerId(data.playerName || 'Player');
+              void saveDailyChallengeProgress(playerId, dailyChallenge.date, g.dailyProgress);
+              const complete = (Object.keys(dailyChallenge.targets) as ChallengeBird[]).every(k => g.dailyProgress[k] >= dailyChallenge.targets[k]);
+              if (complete && !g.dailyClaimPending) {
+                g.dailyClaimPending = true;
+                claimDailyChallengeReward(playerId, dailyChallenge.date, g.dailyProgress).then(claimed => {
+                  g.dailyClaimPending = false;
+                  if (!claimed || g.dailyClaimed) return;
+                  g.dailyClaimed = true;
+                  g.score += dailyChallenge.reward;
+                  setScore(g.score);
+                  setDailyClaimed(true);
+                  showToast(`🏆 DAILY CHALLENGE COMPLETE! +${dailyChallenge.reward} points`);
+                });
+              }
+            }
             playSoundHit(sys);
             if (g.combo >= 3) {
               playSoundCombo(sys);
@@ -1168,6 +1220,14 @@ export default function App() {
 
       if (gameState === 'PLAYING') {
         g.elapsed += dt;
+        if (!g.dailyClaimed && g.dailyTime > 0) {
+          g.dailyTime = Math.max(0, g.dailyTime - dt);
+          const second = Math.ceil(g.dailyTime);
+          if (second !== g.lastDailySecond) {
+            g.lastDailySecond = second;
+            setDailyTime(second);
+          }
+        }
         g.spawnTimer -= dt;
         g.planeTimer -= dt;
         g.ufoTimer -= dt;
@@ -1381,52 +1441,12 @@ export default function App() {
             const r = entity.radius;
 
             if (entity.key === 'ufo') {
-              // 20% Smaller UFO Alien Saucer
-              const discGrad = ctx.createLinearGradient(-r * 1.4, 0, r * 1.4, 0);
-              discGrad.addColorStop(0, '#0f172a');
-              discGrad.addColorStop(0.2, '#0891b2');
-              discGrad.addColorStop(0.5, '#e0f2fe');
-              discGrad.addColorStop(0.8, '#0891b2');
-              discGrad.addColorStop(1, '#0f172a');
-              ctx.fillStyle = discGrad;
-              ctx.beginPath();
-              ctx.ellipse(0, r * 0.08, r * 1.35, r * 0.45, 0, 0, Math.PI * 2);
-              ctx.fill();
-
-              // Glass Dome
-              const domeGrad = ctx.createRadialGradient(0, -r * 0.22, 2, 0, -r * 0.22, r * 0.65);
-              domeGrad.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
-              domeGrad.addColorStop(0.4, 'rgba(103, 232, 249, 0.85)');
-              domeGrad.addColorStop(1, 'rgba(14, 116, 144, 0.9)');
-              ctx.fillStyle = domeGrad;
-              ctx.beginPath();
-              ctx.ellipse(0, -r * 0.2, r * 0.68, r * 0.52, 0, Math.PI, 0);
-              ctx.fill();
-
-              // Alien Pilot
-              ctx.fillStyle = '#22c55e';
-              ctx.beginPath();
-              ctx.arc(0, -r * 0.25, r * 0.24, 0, Math.PI * 2);
-              ctx.fill();
-
-              // Alien Eyes
-              ctx.fillStyle = '#0f172a';
-              ctx.beginPath();
-              ctx.ellipse(-r * 0.09, -r * 0.27, r * 0.07, r * 0.1, -0.3, 0, Math.PI * 2);
-              ctx.ellipse(r * 0.09, -r * 0.27, r * 0.07, r * 0.1, 0.3, 0, Math.PI * 2);
-              ctx.fill();
-
-              // Orbiting LED Lights
-              const ledColors = ['#f43f5e', '#fbbf24', '#22c55e', '#38bdf8', '#a855f7'];
-              for (let k = 0; k < 6; k++) {
-                const angle = (k / 6) * Math.PI * 2 + entity.age * 5.5;
-                const lx = Math.cos(angle) * r * 1.15;
-                const ly = r * 0.08 + Math.sin(angle) * r * 0.35;
-                ctx.fillStyle = ledColors[k % ledColors.length];
-                ctx.beginPath();
-                ctx.arc(lx, ly, 2.8, 0, Math.PI * 2);
-                ctx.fill();
-              }
+              ctx.fillStyle = '#67e8f9';
+              ctx.beginPath(); ctx.arc(0, -r * .18, r * .55, Math.PI, 0); ctx.fill();
+              ctx.fillStyle = '#0891b2';
+              ctx.beginPath(); ctx.ellipse(0, r * .08, r * 1.25, r * .42, 0, 0, Math.PI * 2); ctx.fill();
+              ctx.fillStyle = '#facc15';
+              for (const x of [-.65, 0, .65]) { ctx.beginPath(); ctx.arc(x * r, r * .16, 3, 0, Math.PI * 2); ctx.fill(); }
             } else if (entity.key === 'plane') {
               // High Polish Supersonic Aeroplane
               drawDetailedAeroplane(ctx, entity, g.elapsed);
@@ -1488,7 +1508,7 @@ export default function App() {
             ctx.fillStyle = '#ef4444';
             ctx.font = 'black 16px sans-serif';
             ctx.textAlign = 'center';
-            ctx.fillText('⚡ ALIEN UFO EMP BLACKOUT (2s)!', g.width / 2, g.height * 0.42);
+            ctx.fillText('⚡ MULTIPLAYER EMP SABOTAGE!' , g.width / 2, g.height * 0.42);
 
             ctx.fillStyle = '#38bdf8';
             ctx.font = 'bold 12px sans-serif';
@@ -1647,8 +1667,22 @@ export default function App() {
           </div>
         )}
 
-        {/* Floating In-Game Controls */}
-        <div className="absolute right-4 sm:right-6 top-4 flex items-center gap-2 z-20">
+        {gameState === 'PLAYING' && (
+          <aside className="absolute top-3 right-3 z-20 w-[150px] sm:w-[185px] rounded-xl bg-slate-950/80 text-white p-2.5 shadow-lg border border-white/20 pointer-events-none" aria-label="Daily Challenge progress">
+            <div className="flex justify-between text-[10px] sm:text-xs font-black mb-1">
+              <span>🏆 DAILY</span><span className={dailyTime <= 10 ? 'text-red-300' : 'text-cyan-200'}><Clock className="inline w-3 h-3" /> {dailyClaimed ? 'DONE' : `${dailyTime}s`}</span>
+            </div>
+            {(Object.keys(dailyChallenge.targets) as ChallengeBird[]).map(key => (
+              <div key={key} className="flex justify-between text-[9px] sm:text-[10px] leading-4">
+                <span>{challengeLabels[key]}</span><b className={dailyProgress[key] >= dailyChallenge.targets[key] ? 'text-emerald-300' : ''}>{dailyProgress[key]}/{dailyChallenge.targets[key]}</b>
+              </div>
+            ))}
+            <div className="mt-1 text-[8px] text-amber-200 font-bold">Reward: +{dailyChallenge.reward}</div>
+          </aside>
+        )}
+
+        {/* Responsive bottom game controls */}
+        <div className="absolute right-3 sm:right-5 bottom-[max(0.75rem,env(safe-area-inset-bottom))] flex items-center gap-2 z-20">
           <div className="relative">
             <button
               onClick={() => setShowVolumePopup(!showVolumePopup)}
@@ -1663,7 +1697,7 @@ export default function App() {
             </button>
 
             {showVolumePopup && (
-              <div className="absolute right-0 top-12 w-60 bg-white/95 backdrop-blur-md rounded-2xl p-4 shadow-2xl border border-gray-200 z-30 animate-in fade-in zoom-in-95">
+              <div className="absolute right-0 bottom-12 w-60 bg-white/95 backdrop-blur-md rounded-2xl p-4 shadow-2xl border border-gray-200 z-30 animate-in fade-in zoom-in-95">
                 <div className="text-xs font-black text-gray-800 mb-3 flex items-center gap-1.5">
                   <Music className="w-4 h-4 text-indigo-600" /> In-Game Volume
                 </div>
@@ -1728,7 +1762,7 @@ export default function App() {
 
         {/* Hearts at Centre Bottom */}
         {gameState === 'PLAYING' && (
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/95 backdrop-blur-md shadow-xl border border-white/80 animate-in fade-in">
+          <div className="absolute bottom-16 sm:bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/95 backdrop-blur-md shadow-xl border border-white/80 animate-in fade-in">
             <span className="text-[11px] font-extrabold text-gray-600 uppercase tracking-wider mr-0.5">LIVES</span>
             <div className="flex gap-1.5 text-lg">
               {Array.from({ length: Math.max(0, lives) }).map((_, i) => (
@@ -1890,6 +1924,7 @@ export default function App() {
             playerName={data.playerName || 'Player'}
             onClose={() => setShowMultiplayerModal(false)}
             onStartDuel={handleStartDuel}
+            activeDuelRoom={activeMultiRoom}
           />
         )}
       </div>

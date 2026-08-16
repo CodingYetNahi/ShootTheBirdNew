@@ -13,12 +13,42 @@ import {
   updateDoc,
   serverTimestamp,
   onSnapshot,
-  getDoc
+  getDoc,
+  runTransaction
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
-export const db = getFirestore(app);
+
+// AI Studio provisions this game with a named Firestore database. Falling back
+// to getFirestore(app) silently targets "(default)", which makes room reads
+// report that the client is offline and prevents multiplayer rooms being made.
+const databaseId = firebaseConfig.firestoreDatabaseId?.trim();
+export const db = databaseId ? getFirestore(app, databaseId) : getFirestore(app);
+
+function firestoreErrorMessage(error: unknown, action: string) {
+  const firestoreError = error as { code?: string; message?: string };
+  const code = firestoreError?.code || '';
+  if (code === 'unavailable' || code === 'failed-precondition') {
+    return `Multiplayer service is temporarily unavailable while trying to ${action}. Please reconnect and retry.`;
+  }
+  if (code === 'permission-denied') {
+    return `Multiplayer access was denied while trying to ${action}. The Firestore rules may need deployment.`;
+  }
+  return firestoreError?.message || `Unable to ${action}. Please try again.`;
+}
+
+function withFirestoreTimeout<T>(operation: Promise<T>, action: string, timeoutMs = 12000): Promise<T> {
+  return Promise.race([
+    operation,
+    new Promise<T>((_, reject) => {
+      globalThis.setTimeout(() => reject({
+        code: 'unavailable',
+        message: `Timed out while trying to ${action}`,
+      }), timeoutMs);
+    }),
+  ]);
+}
 
 export interface FirestoreScore {
   id?: string;
@@ -30,6 +60,52 @@ export interface FirestoreScore {
 
 const scoresCollection = collection(db, 'scores');
 const roomsCollection = collection(db, 'multiplayer_rooms');
+const dailyChallengesCollection = collection(db, 'daily_challenges');
+
+export interface DailyChallengeRecord {
+  progress: Record<string, number>;
+  completed: boolean;
+  rewardClaimed: boolean;
+}
+
+export async function loadDailyChallenge(playerId: string, date: string): Promise<DailyChallengeRecord | null> {
+  try {
+    const snapshot = await getDoc(doc(dailyChallengesCollection, `${playerId}_${date}`));
+    return snapshot.exists() ? snapshot.data() as DailyChallengeRecord : null;
+  } catch (error) {
+    console.warn('Daily Challenge read unavailable; gameplay continues locally.', error);
+    return null;
+  }
+}
+
+export async function saveDailyChallengeProgress(playerId: string, date: string, progress: Record<string, number>) {
+  try {
+    await setDoc(doc(dailyChallengesCollection, `${playerId}_${date}`), {
+      playerId, date, progress, completed: false, rewardClaimed: false, updatedAt: serverTimestamp(),
+    }, { merge: true });
+  } catch (error) {
+    console.warn('Daily Challenge progress write unavailable.', error);
+  }
+}
+
+/** Transactionally claims the one-per-player/day reward, preventing duplicate tabs or retries. */
+export async function claimDailyChallengeReward(playerId: string, date: string, progress: Record<string, number>) {
+  try {
+    const record = doc(dailyChallengesCollection, `${playerId}_${date}`);
+    return await runTransaction(db, async transaction => {
+      const snapshot = await transaction.get(record);
+      if (snapshot.exists() && snapshot.data().rewardClaimed) return false;
+      transaction.set(record, {
+        playerId, date, progress, completed: true, rewardClaimed: true,
+        completedAt: serverTimestamp(), updatedAt: serverTimestamp(),
+      }, { merge: true });
+      return true;
+    });
+  } catch (error) {
+    console.warn('Daily Challenge reward claim unavailable.', error);
+    return false;
+  }
+}
 
 export async function submitScoreToFirestore(playerName: string, score: number) {
   if (!score || score <= 0) return;
@@ -102,7 +178,10 @@ export function generateRoomCode(): string {
   return code;
 }
 
-export async function createMultiplayerRoom(hostName: string, hostId: string): Promise<MultiplayerRoomData | null> {
+export async function createMultiplayerRoom(
+  hostName: string,
+  hostId: string
+): Promise<{ success: true; room: MultiplayerRoomData } | { success: false; error: string }> {
   try {
     const roomCode = generateRoomCode();
     const newRoomRef = doc(roomsCollection, roomCode);
@@ -124,16 +203,16 @@ export async function createMultiplayerRoom(hostName: string, hostId: string): P
       seed: Math.floor(Math.random() * 1000000)
     };
 
-    await setDoc(newRoomRef, {
+    await withFirestoreTimeout(setDoc(newRoomRef, {
       ...roomData,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
-    });
+    }), 'create a room');
 
-    return roomData;
-  } catch (err) {
+    return { success: true, room: roomData };
+  } catch (err: unknown) {
     console.error('Error creating multiplayer room:', err);
-    return null;
+    return { success: false, error: firestoreErrorMessage(err, 'create a room') };
   }
 }
 
@@ -162,7 +241,7 @@ export async function joinMultiplayerRoom(
       return { success: false, error: 'Room is already full!' };
     }
 
-    await updateDoc(roomRef, {
+    await withFirestoreTimeout(updateDoc(roomRef, {
       guestId,
       guestName: guestName || 'Player 2',
       guestScore: 0,
@@ -170,7 +249,7 @@ export async function joinMultiplayerRoom(
       guestLives: 3,
       guestReady: true,
       updatedAt: serverTimestamp()
-    });
+    }), 'join the room');
 
     return { success: true, room: { ...data, guestId, guestName: guestName || 'Player 2' } };
   } catch (err: any) {
@@ -221,10 +300,10 @@ export async function setRoomReady(roomId: string, isHost: boolean, ready: boole
   }
 }
 
-export async function startMultiplayerMatch(roomId: string) {
+export async function startMultiplayerMatch(roomId: string): Promise<{ success: boolean; error?: string }> {
   try {
     const roomRef = doc(roomsCollection, roomId);
-    await updateDoc(roomRef, {
+    await withFirestoreTimeout(updateDoc(roomRef, {
       status: 'in_progress',
       gameStartTime: Date.now() + 3000, // 3-second countdown
       hostScore: 0,
@@ -234,9 +313,11 @@ export async function startMultiplayerMatch(roomId: string) {
       hostLives: 3,
       guestLives: 3,
       updatedAt: serverTimestamp()
-    });
-  } catch (err) {
+    }), 'start the match');
+    return { success: true };
+  } catch (err: unknown) {
     console.error('Start match error:', err);
+    return { success: false, error: firestoreErrorMessage(err, 'start the match') };
   }
 }
 
@@ -293,7 +374,8 @@ export async function completeMultiplayerMatch(roomId: string, winnerName: strin
 
 export function subscribeToMultiplayerRoom(
   roomId: string,
-  callback: (room: MultiplayerRoomData | null) => void
+  callback: (room: MultiplayerRoomData | null) => void,
+  onError?: (message: string) => void
 ) {
   try {
     const roomRef = doc(roomsCollection, roomId);
@@ -308,6 +390,7 @@ export function subscribeToMultiplayerRoom(
       },
       (err) => {
         console.warn('Room subscription error:', err);
+        onError?.(firestoreErrorMessage(err, 'sync the room'));
       }
     );
   } catch (err) {
@@ -318,7 +401,8 @@ export function subscribeToMultiplayerRoom(
 
 export function subscribeToOpenRooms(
   callback: (rooms: MultiplayerRoomData[]) => void,
-  max = 12
+  max = 12,
+  onError?: (message: string) => void
 ) {
   try {
     const q = query(
@@ -341,6 +425,7 @@ export function subscribeToOpenRooms(
       },
       (err) => {
         console.warn('Open rooms subscribe error:', err);
+        onError?.(firestoreErrorMessage(err, 'load open rooms'));
       }
     );
   } catch (err) {
@@ -348,4 +433,3 @@ export function subscribeToOpenRooms(
     return () => {};
   }
 }
-

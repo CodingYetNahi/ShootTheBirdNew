@@ -123,7 +123,7 @@ export const entityConfigs: Record<string, EntityTypeConfig> = {
   },
   hazard_25: {
     type: 'hazard_25',
-    name: 'Hazard Bird (-25%)',
+    name: 'Hazard Bird (-1 Heart)',
     radius: 21,
     speed: 145,
     points: 0,
@@ -141,7 +141,7 @@ export const entityConfigs: Record<string, EntityTypeConfig> = {
   },
   skull_50: {
     type: 'skull_50',
-    name: 'Cursed Raven (-50%)',
+    name: 'Cursed Raven (-1 Heart)',
     radius: 24,
     speed: 155,
     points: 0,

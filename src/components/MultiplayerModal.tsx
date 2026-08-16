@@ -33,7 +33,7 @@ interface MultiplayerModalProps {
   playerName: string;
   onClose: () => void;
   onStartDuel: (room: MultiplayerRoomData, isHost: boolean) => void;
-  activeDuelRoom: MultiplayerRoomData | null;
+  activeDuelRoom?: MultiplayerRoomData | null;
 }
 
 export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
@@ -65,7 +65,7 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
     const unsub = subscribeToOpenRooms((rooms) => {
       // Filter out room where current player is host if needed, or show all open rooms
       setOpenRooms(rooms);
-    });
+    }, 12, setErrorMessage);
     return () => unsub();
   }, []);
 
@@ -85,7 +85,7 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
       if (updatedRoom.status === 'in_progress') {
         onStartDuel(updatedRoom, isHost);
       }
-    });
+    }, setErrorMessage);
 
     return () => unsub();
   }, [currentRoom?.id, isHost]);
@@ -93,14 +93,14 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
   const handleCreateRoom = async () => {
     setLoading(true);
     setErrorMessage(null);
-    const room = await createMultiplayerRoom(playerName || 'Player 1', playerId);
+    const result = await createMultiplayerRoom(playerName || 'Player 1', playerId);
     setLoading(false);
-    if (room) {
-      setCurrentRoom(room);
+    if (result.success) {
+      setCurrentRoom(result.room);
       setIsHost(true);
       setView('ROOM');
     } else {
-      setErrorMessage('Failed to create battle room. Please check your internet connection.');
+      setErrorMessage('error' in result ? result.error : 'Could not create room.');
     }
   };
 
@@ -144,8 +144,9 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
       return;
     }
     setLoading(true);
-    await startMultiplayerMatch(currentRoom.id);
+    const result = await startMultiplayerMatch(currentRoom.id);
     setLoading(false);
+    if (!result.success) setErrorMessage(result.error || 'Could not start the battle. Please retry.');
   };
 
   const handleSendTaunt = async (txt: string) => {
