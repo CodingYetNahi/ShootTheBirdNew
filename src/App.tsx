@@ -100,7 +100,12 @@ const DAILY_PROGRESS_KEY = 'birdShooter_dailyChallenge_v1';
 function loadLocalDailyProgress(date: string) {
   try {
     const saved = JSON.parse(localStorage.getItem(DAILY_PROGRESS_KEY) || 'null');
-    if (saved?.date === date) return saved;
+    if (
+      saved?.date === date &&
+      typeof saved?.progress?.normal === 'number' &&
+      typeof saved?.progress?.fast === 'number' &&
+      typeof saved?.progress?.small === 'number'
+    ) return saved as { date: string; progress: Record<ChallengeBird, number>; claimed: boolean };
   } catch {}
   return null;
 }
@@ -331,9 +336,11 @@ export default function App() {
   const [showVolumePopup, setShowVolumePopup] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const dailyChallenge = useRef(getDailyChallenge()).current;
+  // Conflict resolution: retain the locally persisted state. Initializing these
+  // values to zero would erase the home-page challenge after every reload.
   const initialDaily = useRef(loadLocalDailyProgress(dailyChallenge.date)).current;
   const [dailyProgress, setDailyProgress] = useState<Record<ChallengeBird, number>>(
-    initialDaily?.progress || { normal: 0, fast: 0, small: 0 }
+    initialDaily?.progress ?? { normal: 0, fast: 0, small: 0 }
   );
   const [dailyClaimed, setDailyClaimed] = useState(Boolean(initialDaily?.claimed));
 
