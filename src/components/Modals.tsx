@@ -8,7 +8,7 @@ import {
   Volume2,
   Sparkles
 } from 'lucide-react';
-import { BirdMascot, PlaneMascot } from '../App';
+import { BirdMascot } from '../App';
 
 export interface GameSettings {
   sound: boolean;
@@ -48,7 +48,7 @@ export function MainMenuModal({
         <div className="text-center mb-5">
           <div className="flex justify-center items-center gap-3 mb-2 animate-bounce">
             <BirdMascot size={64} />
-            <PlaneMascot size={52} />
+            
           </div>
           <h2 className="text-2xl sm:text-3xl font-black text-[#0f283d] tracking-tight">
             Shoot The Bird
