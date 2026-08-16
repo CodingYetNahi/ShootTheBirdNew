@@ -66,6 +66,11 @@ export interface DailyChallengeRecord {
   progress: Record<string, number>;
   completed: boolean;
   rewardClaimed: boolean;
+  date?: string;
+  playerId?: string;
+  playerName?: string;
+  challengeId?: string;
+  reward?: number;
 }
 
 export async function loadDailyChallenge(playerId: string, date: string): Promise<DailyChallengeRecord | null> {
@@ -81,7 +86,7 @@ export async function loadDailyChallenge(playerId: string, date: string): Promis
 export async function saveDailyChallengeProgress(playerId: string, date: string, progress: Record<string, number>) {
   try {
     await setDoc(doc(dailyChallengesCollection, `${playerId}_${date}`), {
-      playerId, date, progress, completed: false, rewardClaimed: false, updatedAt: serverTimestamp(),
+      playerId, date, challengeId: date, progress, updatedAt: serverTimestamp(),
     }, { merge: true });
   } catch (error) {
     console.warn('Daily Challenge progress write unavailable.', error);
@@ -89,14 +94,21 @@ export async function saveDailyChallengeProgress(playerId: string, date: string,
 }
 
 /** Transactionally claims the one-per-player/day reward, preventing duplicate tabs or retries. */
-export async function claimDailyChallengeReward(playerId: string, date: string, progress: Record<string, number>) {
+export async function claimDailyChallengeReward(
+  playerId: string,
+  playerName: string,
+  date: string,
+  progress: Record<string, number>,
+  reward: number,
+) {
   try {
     const record = doc(dailyChallengesCollection, `${playerId}_${date}`);
     return await runTransaction(db, async transaction => {
       const snapshot = await transaction.get(record);
       if (snapshot.exists() && snapshot.data().rewardClaimed) return false;
       transaction.set(record, {
-        playerId, date, progress, completed: true, rewardClaimed: true,
+        playerId, playerName: playerName.slice(0, 20) || 'Player', date, challengeId: date,
+        progress, reward: Math.max(0, Math.floor(reward)), completed: true, rewardClaimed: true,
         completedAt: serverTimestamp(), updatedAt: serverTimestamp(),
       }, { merge: true });
       return true;
@@ -183,33 +195,41 @@ export async function createMultiplayerRoom(
   hostId: string
 ): Promise<{ success: true; room: MultiplayerRoomData } | { success: false; error: string }> {
   try {
-    const roomCode = generateRoomCode();
-    const newRoomRef = doc(roomsCollection, roomCode);
-    const roomData: MultiplayerRoomData = {
-      id: roomCode,
-      roomCode,
-      hostId,
-      hostName: hostName || 'Player 1',
-      hostScore: 0,
-      hostCombo: 0,
-      hostLives: 3,
-      hostReady: false,
-      guestScore: 0,
-      guestCombo: 0,
-      guestLives: 3,
-      guestReady: false,
-      status: 'waiting',
-      gameDuration: 60,
-      seed: Math.floor(Math.random() * 1000000)
-    };
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const roomCode = generateRoomCode();
+      const newRoomRef = doc(roomsCollection, roomCode);
+      const roomData: MultiplayerRoomData = {
+        id: roomCode,
+        roomCode,
+        hostId,
+        hostName: hostName || 'Player 1',
+        hostScore: 0,
+        hostCombo: 0,
+        hostLives: 3,
+        hostReady: false,
+        guestScore: 0,
+        guestCombo: 0,
+        guestLives: 3,
+        guestReady: false,
+        status: 'waiting',
+        gameDuration: 60,
+        seed: Math.floor(Math.random() * 1000000)
+      };
 
-    await withFirestoreTimeout(setDoc(newRoomRef, {
-      ...roomData,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
-    }), 'create a room');
+      const created = await withFirestoreTimeout(runTransaction(db, async transaction => {
+        const existing = await transaction.get(newRoomRef);
+        if (existing.exists()) return false;
+        transaction.set(newRoomRef, {
+          ...roomData,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+        return true;
+      }), 'create a room');
 
-    return { success: true, room: roomData };
+      if (created) return { success: true, room: roomData };
+    }
+    return { success: false, error: 'Could not reserve a unique room code. Please retry.' };
   } catch (err: unknown) {
     console.error('Error creating multiplayer room:', err);
     return { success: false, error: firestoreErrorMessage(err, 'create a room') };
@@ -226,32 +246,39 @@ export async function joinMultiplayerRoom(
     if (!cleanCode) return { success: false, error: 'Please enter a room code' };
 
     const roomRef = doc(roomsCollection, cleanCode);
-    const roomSnap = await getDoc(roomRef);
+    const room = await withFirestoreTimeout(runTransaction(db, async transaction => {
+      const roomSnap = await transaction.get(roomRef);
+      if (!roomSnap.exists()) throw new Error('Room not found. Check the code and try again!');
+      const data = roomSnap.data() as MultiplayerRoomData;
+      if (data.hostId === guestId) throw new Error('You are already the host of this room.');
+      if (data.status !== 'waiting' && data.guestId !== guestId) {
+        throw new Error('Match already in progress or completed.');
+      }
+      if (data.guestId && data.guestId !== guestId) throw new Error('Room is already full!');
 
-    if (!roomSnap.exists()) {
-      return { success: false, error: 'Room not found. Check the code and try again!' };
-    }
-
-    const data = roomSnap.data() as MultiplayerRoomData;
-    if (data.status !== 'waiting' && data.guestId !== guestId) {
-      return { success: false, error: 'Match already in progress or completed.' };
-    }
-
-    if (data.guestId && data.guestId !== guestId && data.hostId !== guestId) {
-      return { success: false, error: 'Room is already full!' };
-    }
-
-    await withFirestoreTimeout(updateDoc(roomRef, {
-      guestId,
-      guestName: guestName || 'Player 2',
-      guestScore: 0,
-      guestCombo: 0,
-      guestLives: 3,
-      guestReady: true,
-      updatedAt: serverTimestamp()
+      const joinedRoom: MultiplayerRoomData = {
+        ...data,
+        id: cleanCode,
+        guestId,
+        guestName: guestName || 'Player 2',
+        guestScore: 0,
+        guestCombo: 0,
+        guestLives: 3,
+        guestReady: true,
+      };
+      transaction.update(roomRef, {
+        guestId: joinedRoom.guestId,
+        guestName: joinedRoom.guestName,
+        guestScore: joinedRoom.guestScore,
+        guestCombo: joinedRoom.guestCombo,
+        guestLives: joinedRoom.guestLives,
+        guestReady: joinedRoom.guestReady,
+        updatedAt: serverTimestamp()
+      });
+      return joinedRoom;
     }), 'join the room');
 
-    return { success: true, room: { ...data, guestId, guestName: guestName || 'Player 2' } };
+    return { success: true, room };
   } catch (err: any) {
     console.error('Error joining room:', err);
     return { success: false, error: err?.message || 'Failed to join room' };
@@ -303,16 +330,24 @@ export async function setRoomReady(roomId: string, isHost: boolean, ready: boole
 export async function startMultiplayerMatch(roomId: string): Promise<{ success: boolean; error?: string }> {
   try {
     const roomRef = doc(roomsCollection, roomId);
-    await withFirestoreTimeout(updateDoc(roomRef, {
-      status: 'in_progress',
-      gameStartTime: Date.now() + 3000, // 3-second countdown
-      hostScore: 0,
-      guestScore: 0,
-      hostCombo: 0,
-      guestCombo: 0,
-      hostLives: 3,
-      guestLives: 3,
-      updatedAt: serverTimestamp()
+    await withFirestoreTimeout(runTransaction(db, async transaction => {
+      const snapshot = await transaction.get(roomRef);
+      if (!snapshot.exists()) throw new Error('Room no longer exists.');
+      const room = snapshot.data() as MultiplayerRoomData;
+      if (room.status !== 'waiting') throw new Error('This match has already started.');
+      if (!room.guestId) throw new Error('Waiting for a challenger to join.');
+      if (!room.hostReady || !room.guestReady) throw new Error('Both players must be ready.');
+      transaction.update(roomRef, {
+        status: 'in_progress',
+        gameStartTime: Date.now() + 3000,
+        hostScore: 0,
+        guestScore: 0,
+        hostCombo: 0,
+        guestCombo: 0,
+        hostLives: 3,
+        guestLives: 3,
+        updatedAt: serverTimestamp()
+      });
     }), 'start the match');
     return { success: true };
   } catch (err: unknown) {
@@ -417,7 +452,7 @@ export function subscribeToOpenRooms(
         snapshot.forEach((d) => {
           const r = d.data() as MultiplayerRoomData;
           // Only show rooms where guest hasn't occupied yet or waiting for player
-          if (!r.guestId || r.status === 'waiting') {
+          if (!r.guestId) {
             rooms.push({ ...r, id: d.id });
           }
         });
