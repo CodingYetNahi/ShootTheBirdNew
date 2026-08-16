@@ -10,14 +10,9 @@ export interface RenderEntity {
   type: EntityTypeConfig;
 }
 
-export function horizontalScaleForDirection(direction: number) {
-  return direction < 0 ? -1 : 1;
-}
-
 function faceTravelDirection(ctx: CanvasRenderingContext2D, entity: RenderEntity) {
-  // Artwork faces right: right-moving entities stay unchanged; left-moving
-  // entities are mirrored exactly once by this shared renderer.
-  ctx.scale(horizontalScaleForDirection(entity.dir), 1);
+  // Shape artwork faces right. Mirror it only for leftward travel.
+  if (entity.dir < 0) ctx.scale(-1, 1);
 }
 
 /** Lightweight arcade aeroplane built from a few readable canvas shapes. */
