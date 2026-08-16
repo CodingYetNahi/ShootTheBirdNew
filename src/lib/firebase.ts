@@ -253,6 +253,10 @@ export async function joinMultiplayerRoom(
       if (data.guestId === guestId) return { ...data, id: cleanCode };
       if (data.status !== 'waiting') throw new Error('Match already in progress or completed.');
       if (data.guestId) throw new Error('Room is already full!');
+      if (data.status !== 'waiting' && data.guestId !== guestId) {
+        throw new Error('Match already in progress or completed.');
+      }
+      if (data.guestId && data.guestId !== guestId) throw new Error('Room is already full!');
 
       const joinedRoom: MultiplayerRoomData = {
         ...data,
