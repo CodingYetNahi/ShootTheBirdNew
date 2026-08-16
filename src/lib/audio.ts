@@ -82,6 +82,9 @@ export function playSfxTone(
   pitchEnd?: number
 ) {
   if (!sys.ctx || !sys.sfxGain || sys.sfxGain.gain.value <= 0) return;
+  if (sys.ctx.state === 'suspended') {
+  sys.ctx.resume().catch(() => {});
+}
   try {
     const ctx = sys.ctx;
     const t = ctx.currentTime;
