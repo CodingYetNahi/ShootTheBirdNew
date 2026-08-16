@@ -1688,18 +1688,7 @@ export default function App() {
           </div>
         )}
 
-        {gameState === 'PLAYING' && (
-          <aside className="absolute top-3 right-3 z-20 w-[150px] sm:w-[185px] rounded-xl bg-slate-950/80 text-white p-2.5 shadow-lg border border-white/20 pointer-events-none" aria-label="Daily Challenge progress">
-            <div className="flex justify-between text-[10px] sm:text-xs font-black mb-1">
-              <span>🏆 DAILY</span><span className={dailyTime <= 10 ? 'text-red-300' : 'text-cyan-200'}><Clock className="inline w-3 h-3" /> {dailyClaimed ? 'DONE' : `${dailyTime}s`}</span>
-            </div>
-            {(Object.keys(dailyChallenge.targets) as ChallengeBird[]).map(key => (
-              <div key={key} className="flex justify-between text-[9px] sm:text-[10px] leading-4">
-                <span>{challengeLabels[key]}</span><b className={dailyProgress[key] >= dailyChallenge.targets[key] ? 'text-emerald-300' : ''}>{dailyProgress[key]}/{dailyChallenge.targets[key]}</b>
-              </div>
-            ))}
-            <div className="mt-1 text-[8px] text-amber-200 font-bold">Reward: +{dailyChallenge.reward}</div>
-          </aside>
+        {
         )}
 
         {/* Responsive bottom game controls */}
