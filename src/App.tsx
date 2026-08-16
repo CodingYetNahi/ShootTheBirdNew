@@ -1688,9 +1688,7 @@ export default function App() {
           </div>
         )}
 
-        {
-        )}
-
+     
         {/* Responsive bottom game controls */}
         <div className="absolute right-3 sm:right-5 bottom-[max(0.75rem,env(safe-area-inset-bottom))] flex items-center gap-2 z-20">
           <div className="relative">
