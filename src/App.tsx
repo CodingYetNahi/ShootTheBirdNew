@@ -71,9 +71,11 @@ import {
   playSoundExtraLife,
   playSoundSabotageAlert,
   startBackgroundMusic,
-  stopBackgroundMusic,
-  AudioSystem, duckMusic, restoreMusic, updateMusicVolume
-  AudioSystem, duckMusic, restoreMusic
+  sstopBackgroundMusic,
+AudioSystem,
+duckMusic,
+restoreMusic,
+updateMusicVolume
 } from './lib/audio';
 import {
   entityConfigs,
