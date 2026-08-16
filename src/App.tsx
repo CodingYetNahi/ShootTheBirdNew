@@ -10,8 +10,24 @@ import {
   VolumeX,
   Music,
   Shield,
+  Sparkles,
+  Heart,
+  Volume1,
   Plane,
+  AlertTriangle,
+  Skull,
+  Share2,
+  Swords,
+  Users,
+  Zap,
+  Crown,
+  Flame,
   Crosshair,
+Target,
+Radio,
+Clock,
+CloudRain,
+Snowflake,
 Sun
 } from 'lucide-react';
 import {
@@ -54,7 +70,7 @@ import {
   playSoundSabotageAlert,
   startBackgroundMusic,
   stopBackgroundMusic,
-  AudioSystem, duckMusic, restoreMusic, updateMusicVolume
+  AudioSystem, duckMusic, restoreMusic
 } from './lib/audio';
 import {
   entityConfigs,
@@ -180,7 +196,7 @@ export function BirdMascot({
     />
   );
 }
-
+      
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -224,7 +240,6 @@ export default function App() {
 
   // Audio System Ref
   const audioSysRef = useRef<AudioSystem>(createAudioSystem());
-  const toastTimerRef = useRef<number | null>(null);
 
   // Mutable Game Loop State
   const gameRef = useRef({
@@ -268,29 +283,19 @@ export default function App() {
     dailyClaimed: false,
     dailyClaimPending: false,
     lastDailySecond: dailyChallenge.timeLimit,
-    finishing: false,
   });
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
-    if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
-    toastTimerRef.current = window.setTimeout(() => {
+    setTimeout(() => {
       setToastMessage(null);
-      toastTimerRef.current = null;
     }, 2500);
   };
-
-  useEffect(() => () => {
-    if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
-    stopBackgroundMusic(audioSysRef.current);
-  }, []);
 
   useEffect(() => {
     const shouldDuck = Boolean(toastMessage) || showVolumePopup || showMultiplayerModal || (gameState !== 'PLAYING' && gameState !== 'MENU');
     if (!shouldDuck) return;
-    const sys = audioSysRef.current;
-    sys.configuredMusicVolume = data.settings.music ? data.settings.musicVolume : 0;
-    duckMusic(sys);
+    duckMusic(audioSysRef.current, data.settings.music ? data.settings.musicVolume : 0);
     return () => restoreMusic(audioSysRef.current, data.settings.music ? data.settings.musicVolume : 0);
   }, [toastMessage, showVolumePopup, showMultiplayerModal, gameState, data.settings.music, data.settings.musicVolume]);
 
@@ -334,7 +339,7 @@ export default function App() {
 
     const sys = audioSysRef.current;
     if (sys.musicGain) {
-      updateMusicVolume(sys, updatedSettings.music ? updatedSettings.musicVolume : 0);
+      sys.musicGain.gain.value = updatedSettings.music ? updatedSettings.musicVolume : 0;
     }
     if (sys.sfxGain) {
       sys.sfxGain.gain.value = updatedSettings.sound ? updatedSettings.soundVolume : 0;
@@ -454,12 +459,11 @@ export default function App() {
     g.highestCombo = 0;
     g.powerUpsCollected = 0;
     g.reactionTimes = [];
-    g.dailyProgress = localDaily?.progress || { normal: 0, fast: 0, small: 0 };
+    g.dailyProgress = { normal: 0, fast: 0, small: 0 };
     g.dailyTime = dailyChallenge.timeLimit;
-    g.dailyClaimed = Boolean(localDaily?.claimed);
+    g.dailyClaimed = false;
     g.dailyClaimPending = false;
     g.lastDailySecond = dailyChallenge.timeLimit;
-    g.finishing = false;
     g.lastTime = performance.now();
 
     setScore(0);
@@ -473,6 +477,9 @@ export default function App() {
     setDailyProgress({ ...g.dailyProgress });
     setDailyTime(dailyChallenge.timeLimit);
     setDailyClaimed(g.dailyClaimed);
+    setDailyProgress(g.dailyProgress);
+    setDailyTime(dailyChallenge.timeLimit);
+    setDailyClaimed(false);
     setGameState('PLAYING');
 
     unlockAudio();
@@ -491,6 +498,10 @@ export default function App() {
       setDailyProgress({ ...g.dailyProgress });
       setDailyClaimed(g.dailyClaimed);
       saveLocalDailyProgress(dailyChallenge.date, g.dailyProgress, g.dailyClaimed);
+      g.dailyProgress = { normal: record.progress?.normal || 0, fast: record.progress?.fast || 0, small: record.progress?.small || 0 };
+      g.dailyClaimed = Boolean(record.rewardClaimed);
+      setDailyProgress({ ...g.dailyProgress });
+      setDailyClaimed(g.dailyClaimed);
     });
   };
 
@@ -680,6 +691,7 @@ export default function App() {
       points: type.points,
       isDangerous: type.isDangerous,
       isUfo: type.isUfo,
+      penaltyPercent: type.penaltyPercent,
       phase: Math.random() * Math.PI * 2,
       wingPhase: Math.random() * Math.PI * 2,
       age: 0,
@@ -788,7 +800,7 @@ export default function App() {
         hitTarget.rotSpeed = (hitTarget.dir >= 0 ? 1 : -1) * (5 + Math.random() * 3);
 
         // Track Birds Hunted
-        if (!hitTarget.isDangerous && hitTarget.key !== 'plane' && hitTarget.key !== 'ufo') {
+        if (!hitTarget.isDangerous && hitTarget.key !== 'plane') {
           g.birdsHunted++;
         }
 
@@ -835,13 +847,14 @@ export default function App() {
               size: 16,
             });
           } else {
+            const penaltyPct = hitTarget.penaltyPercent || 25;
             g.combo = 0;
             g.multiplier = 1;
             setShowCombo(false);
-            g.lives = Math.max(0, g.lives - 1);
+            g.lives--;
             setLives(g.lives);
 
-            playSoundDangerPenalty(sys, hitTarget.key === 'skull_50' ? 50 : 25);
+            playSoundDangerPenalty(sys, penaltyPct);
             showToast(
               hitTarget.key === 'skull_50'
                 ? `☠️ CURSED RAVEN HIT! -1 ❤️ HEART!`
@@ -852,7 +865,7 @@ export default function App() {
               x: hitTarget.x,
               y: hitTarget.y - 15,
               text: '⚠️ -1 ❤️',
-              color: hitTarget.key === 'skull_50' ? '#ef4444' : '#f59e0b',
+              color: penaltyPct === 50 ? '#ef4444' : '#f59e0b',
               life: 1.3,
               maxLife: 1.3,
               size: 16,
@@ -881,26 +894,18 @@ export default function App() {
               const birdKey = hitTarget.key as ChallengeBird;
               g.dailyProgress[birdKey] = Math.min(dailyChallenge.targets[birdKey], g.dailyProgress[birdKey] + 1);
               setDailyProgress({ ...g.dailyProgress });
-              saveLocalDailyProgress(dailyChallenge.date, g.dailyProgress, g.dailyClaimed);
               const playerId = safePlayerId(data.playerName || 'Player');
               void saveDailyChallengeProgress(playerId, dailyChallenge.date, g.dailyProgress);
               const complete = (Object.keys(dailyChallenge.targets) as ChallengeBird[]).every(k => g.dailyProgress[k] >= dailyChallenge.targets[k]);
               if (complete && !g.dailyClaimPending) {
                 g.dailyClaimPending = true;
-                claimDailyChallengeReward(
-                  playerId,
-                  data.playerName || 'Player',
-                  dailyChallenge.date,
-                  g.dailyProgress,
-                  dailyChallenge.reward,
-                ).then(claimed => {
+                claimDailyChallengeReward(playerId, dailyChallenge.date, g.dailyProgress).then(claimed => {
                   g.dailyClaimPending = false;
                   if (!claimed || g.dailyClaimed) return;
                   g.dailyClaimed = true;
                   g.score += dailyChallenge.reward;
                   setScore(g.score);
                   setDailyClaimed(true);
-                  saveLocalDailyProgress(dailyChallenge.date, g.dailyProgress, true);
                   showToast(`🏆 DAILY CHALLENGE COMPLETE! +${dailyChallenge.reward} points`);
                 });
               }
@@ -1058,8 +1063,6 @@ export default function App() {
   // End of match summary computation
   const finishMatch = () => {
     const g = gameRef.current;
-    if (g.finishing) return;
-    g.finishing = true;
     stopBackgroundMusic(audioSysRef.current);
     playSoundGameOver(audioSysRef.current);
 
@@ -1238,7 +1241,7 @@ export default function App() {
             } else {
               const isExempt = entity.key === 'small' || entity.isDangerous || entity.key === 'plane';
               if (!isExempt) {
-                g.lives = Math.max(0, g.lives - 1);
+                g.lives--;
                 playSoundEscape(audioSysRef.current);
                 g.combo = 0;
                 g.multiplier = 1;
@@ -1356,6 +1359,8 @@ export default function App() {
               const fade = Math.max(0, 1 - (entity.dyingTimer / entity.maxDyingTime) * 0.75);
               ctx.globalAlpha = fade;
               ctx.rotate(entity.rot);
+            } else {
+              if (entity.dir < 0) ctx.scale(-1, 1);
             }
 
             const r = entity.radius;
@@ -1487,6 +1492,7 @@ export default function App() {
       running = false;
       window.removeEventListener('resize', handleResize);
       cancelAnimationFrame(gameRef.current.animFrameId);
+      stopBackgroundMusic(audioSysRef.current);
     };
   }, [gameState, data.settings]);
 
@@ -1566,28 +1572,6 @@ export default function App() {
           className="block rounded-2xl shadow-2xl bg-[#38bdf8] touch-none cursor-crosshair border border-white/40"
         />
 
-        {/* Daily challenge stays visible without covering bottom controls or lives. */}
-        {gameState === 'PLAYING' && (
-          <div className="absolute top-3 right-3 z-20 w-[min(12.5rem,48vw)] rounded-xl border border-amber-200/80 bg-slate-950/80 px-3 py-2 text-white shadow-lg backdrop-blur-md pointer-events-none">
-            <div className="flex items-center justify-between gap-2 text-[10px] font-black uppercase tracking-wide text-amber-300">
-              <span>🏆 Daily Challenge</span>
-              <span className={dailyTime <= 10 && !dailyClaimed ? 'text-red-300' : 'text-sky-200'}>
-                {dailyClaimed ? 'Claimed' : `${dailyTime}s`}
-              </span>
-            </div>
-            <div className="mt-1 grid grid-cols-3 gap-1 text-center text-[9px] font-bold">
-              {(Object.keys(dailyChallenge.targets) as ChallengeBird[]).map((key) => (
-                <span key={key} className={dailyProgress[key] >= dailyChallenge.targets[key] ? 'text-emerald-300' : 'text-white'}>
-                  {challengeLabels[key]} {dailyProgress[key]}/{dailyChallenge.targets[key]}
-                </span>
-              ))}
-            </div>
-            {!dailyClaimed && dailyTime === 0 && (
-              <div className="mt-1 text-center text-[9px] font-bold text-slate-300">Try again next game</div>
-            )}
-          </div>
-        )}
-
         {/* Active Power-Up HUD Widget */}
         {activeBuff && gameState === 'PLAYING' && (
           <div className="absolute top-4 left-4 z-20 px-3 py-1.5 rounded-xl bg-white/90 backdrop-blur-md shadow-lg border border-white/80 flex items-center gap-2">
@@ -1608,7 +1592,7 @@ export default function App() {
           </div>
         )}
 
-
+     
         {/* Responsive bottom game controls */}
         <div className="absolute right-3 sm:right-5 bottom-[max(0.75rem,env(safe-area-inset-bottom))] flex items-center gap-2 z-20">
           <div className="relative">
