@@ -945,22 +945,32 @@ export default function App() {
               if (complete && !g.dailyClaimPending) {
                 g.dailyClaimPending = true;
                 claimDailyChallengeReward(
-                  playerId,
-                  data.playerName || 'Player',
-                  dailyChallenge.date,
-                  g.dailyProgress,
-                  dailyChallenge.reward,
-                ).then(claimed => {
-                claimDailyChallengeReward(playerId, dailyChallenge.date, g.dailyProgress).then(claimed => {
-                  g.dailyClaimPending = false;
-                  if (!claimed || g.dailyClaimed) return;
-                  g.dailyClaimed = true;
-                  g.score += dailyChallenge.reward;
-                  setScore(g.score);
-                  setDailyClaimed(true);
-                  saveLocalDailyProgress(dailyChallenge.date, g.dailyProgress, true);
-                  showToast(`🏆 DAILY CHALLENGE COMPLETE! +${dailyChallenge.reward} points`);
-                });
+  playerId,
+  data.playerName || 'Player',
+  dailyChallenge.date,
+  g.dailyProgress,
+  dailyChallenge.reward,
+).then(claimed => {
+  g.dailyClaimPending = false;
+
+  if (!claimed || g.dailyClaimed) return;
+
+  g.dailyClaimed = true;
+  g.score += dailyChallenge.reward;
+
+  setScore(g.score);
+  setDailyClaimed(true);
+
+  saveLocalDailyProgress(
+    dailyChallenge.date,
+    g.dailyProgress,
+    true
+  );
+
+  showToast(
+    `🏆 DAILY CHALLENGE COMPLETE! +${dailyChallenge.reward} points`
+  );
+});
               }
             }
             playSoundHit(sys);
