@@ -60,17 +60,22 @@ function rampMusic(sys: AudioSystem, target: number, seconds = 0.28) {
 }
 
 /** Smoothly lowers music for alerts and overlays. Calls may be safely nested. */
-export function duckMusic(sys: AudioSystem, musicVolume: number, amount = 0.42) {
-  sys.configuredMusicVolume = musicVolume;
+export function duckMusic(sys: AudioSystem, targetFactor = 0.45, duration = 0.12) {
   sys.duckDepth++;
-  rampMusic(sys, musicVolume * amount);
+  rampMusic(sys, sys.configuredMusicVolume * targetFactor, duration);
 }
 
 /** Releases one duck request and restores the player's configured volume. */
-export function restoreMusic(sys: AudioSystem, musicVolume: number) {
-  sys.configuredMusicVolume = musicVolume;
+export function restoreMusic(sys: AudioSystem, configuredVolume: number, duration = 0.25) {
+  sys.configuredMusicVolume = configuredVolume;
   sys.duckDepth = Math.max(0, sys.duckDepth - 1);
-  rampMusic(sys, sys.duckDepth > 0 ? musicVolume * 0.42 : musicVolume, 0.36);
+  rampMusic(sys, sys.duckDepth > 0 ? configuredVolume * 0.45 : configuredVolume, duration);
+}
+
+/** Applies a settings change without disturbing nested overlay duck requests. */
+export function updateMusicVolume(sys: AudioSystem, configuredVolume: number, duration = 0.12) {
+  sys.configuredMusicVolume = configuredVolume;
+  rampMusic(sys, sys.duckDepth > 0 ? configuredVolume * 0.45 : configuredVolume, duration);
 }
 
 export function playSfxTone(
@@ -195,6 +200,7 @@ export function playSoundSabotageAlert(sys: AudioSystem) {
 // Background Music Synthesizer
 export function startBackgroundMusic(sys: AudioSystem, musicVol: number) {
   if (sys.musicTimer || !sys.ctx || !sys.musicGain) return;
+  updateMusicVolume(sys, musicVol, 0.08);
 
   const chords = [
     [261.63, 329.63, 392.0, 493.88], // Cmaj7
@@ -231,7 +237,8 @@ export function startBackgroundMusic(sys: AudioSystem, musicVol: number) {
         osc.type = i === 0 ? 'triangle' : 'sine';
         osc.frequency.setValueAtTime(freq, t);
 
-        const vol = (i === 0 ? 0.04 : 0.02) * musicVol;
+        // User volume is applied once at musicGain, not again per oscillator.
+        const vol = i === 0 ? 0.04 : 0.02;
         gain.gain.setValueAtTime(0.001, t);
         gain.gain.linearRampToValueAtTime(vol, t + 0.3);
         gain.gain.exponentialRampToValueAtTime(0.0001, t + 1.8);
@@ -251,7 +258,7 @@ export function startBackgroundMusic(sys: AudioSystem, musicVol: number) {
     mOsc.type = 'sine';
     mOsc.frequency.setValueAtTime(noteFreq, t);
 
-    const mVol = 0.025 * musicVol;
+    const mVol = 0.025;
     mGain.gain.setValueAtTime(0.001, t);
     mGain.gain.linearRampToValueAtTime(mVol, t + 0.05);
     mGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.55);
