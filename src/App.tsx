@@ -15,7 +15,6 @@ import {
   Sparkles,
   Heart,
   Volume1,
-  Plane,
   AlertTriangle,
   Skull,
   Share2,
@@ -24,7 +23,6 @@ import {
   Zap,
   Crown,
   Flame,
-  Crosshair,
 Target,
 Radio,
 Clock,
@@ -892,7 +890,7 @@ if (
             g.lives = Math.max(0, g.lives - 1);
             setLives(g.lives);
 
-            playSoundDangerPenalty(sys, hitTarget.key === 'skull_50' ? 50 : 25);
+            
             const penaltyPct = hitTarget.penaltyPercent || 25;
             g.combo = 0;
             g.multiplier = 1;
@@ -912,7 +910,7 @@ if (
               y: hitTarget.y - 15,
               text: '⚠️ -1 ❤️',
               color: hitTarget.key === 'skull_50' ? '#ef4444' : '#f59e0b',
-              color: penaltyPct === 50 ? '#ef4444' : '#f59e0b',
+    
               life: 1.3,
               maxLife: 1.3,
               size: 16,
@@ -1076,7 +1074,7 @@ if (
 
     const projectileCount = g.activePowerUp?.type === 'multi_shot' ? 3 : 1;
     g.shotsFired += projectileCount;
-    g.shotsFired++;
+  
     playSoundShoot(audioSysRef.current);
 
     // Multi-shot power-up fires 3 spread shots
@@ -1202,8 +1200,7 @@ if (
     if (gameMode === 'MULTIPLAYER' && activeMultiRoom?.id) {
       const winnerName = finalScore === rivalScore ? 'Draw' : finalScore > rivalScore ? playerName : rivalName;
       completeMultiplayerMatch(activeMultiRoom.id, winnerName);
-      completeMultiplayerMatch(activeMultiRoom.id);
-    }
+          }
   };
 
   // Main Canvas Render Loop
@@ -1215,14 +1212,10 @@ if (
     const loop = (timestamp: number) => {
       if (!running) return;
       const g = gameRef.current;
-      const frameDt = Math.min(0.05, (timestamp - g.lastTime) / 1000);
-      g.lastTime = timestamp;
      const frameDt = Math.min(
   0.05,
   (timestamp - g.lastTime) / 1000
 );
-
-g.lastTime = timestamp;
 
 const awaitingDuelStart =
   gameState === 'PLAYING' &&
