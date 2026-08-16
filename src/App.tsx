@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import homeBird from './assets/game/bird-normal.webp';
 import {
   Play,
-  RotateCcw,
   Trophy,
   HelpCircle,
   Settings as SettingsIcon,
@@ -475,6 +474,9 @@ export default function App() {
     setActiveBuff(null);
     setCurrentWeather('clear');
     setSummaryStats(null);
+    setDailyProgress({ ...g.dailyProgress });
+    setDailyTime(dailyChallenge.timeLimit);
+    setDailyClaimed(g.dailyClaimed);
     setDailyProgress(g.dailyProgress);
     setDailyTime(dailyChallenge.timeLimit);
     setDailyClaimed(false);
@@ -487,6 +489,15 @@ export default function App() {
     const playerId = safePlayerId(data.playerName || nameInput || 'Player');
     loadDailyChallenge(playerId, dailyChallenge.date).then(record => {
       if (!record) return;
+      g.dailyProgress = {
+        normal: Math.max(g.dailyProgress.normal, record.progress?.normal || 0),
+        fast: Math.max(g.dailyProgress.fast, record.progress?.fast || 0),
+        small: Math.max(g.dailyProgress.small, record.progress?.small || 0),
+      };
+      g.dailyClaimed = g.dailyClaimed || Boolean(record.rewardClaimed);
+      setDailyProgress({ ...g.dailyProgress });
+      setDailyClaimed(g.dailyClaimed);
+      saveLocalDailyProgress(dailyChallenge.date, g.dailyProgress, g.dailyClaimed);
       g.dailyProgress = { normal: record.progress?.normal || 0, fast: record.progress?.fast || 0, small: record.progress?.small || 0 };
       g.dailyClaimed = Boolean(record.rewardClaimed);
       setDailyProgress({ ...g.dailyProgress });
