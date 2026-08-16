@@ -26,6 +26,7 @@ export function MainMenuModal({
   onOpenHow,
   onOpenSettings,
   onOpenMultiplayer,
+  dailyChallenge,
 }: {
   playerName: string;
   onRequestStart: () => void;
@@ -33,10 +34,17 @@ export function MainMenuModal({
   onOpenHow: () => void;
   onOpenSettings: () => void;
   onOpenMultiplayer: () => void;
+  dailyChallenge: {
+    date: string;
+    timeLimit: number;
+    reward: number;
+    claimed: boolean;
+    targets: { label: string; progress: number; target: number }[];
+  };
 }) {
   return (
     <div className="absolute inset-0 z-50 bg-black/45 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="w-full max-w-[460px] bg-white/95 rounded-3xl p-6 shadow-2xl border border-white/60">
+      <div className="w-full max-w-[460px] max-h-[94vh] overflow-y-auto bg-white/95 rounded-3xl p-5 sm:p-6 shadow-2xl border border-white/60">
         <div className="text-center mb-5">
           <div className="flex justify-center items-center gap-3 mb-2 animate-bounce">
             <BirdMascot size={64} />
@@ -54,6 +62,29 @@ export function MainMenuModal({
             </div>
           )}
         </div>
+
+        <section className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-3" aria-label="Today's Daily Challenge">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <div>
+              <h3 className="text-xs font-black text-amber-950">🏆 DAILY CHALLENGE</h3>
+              <p className="text-[9px] font-bold text-amber-700">{dailyChallenge.date} · {dailyChallenge.timeLimit}s limit</p>
+            </div>
+            <span className={`rounded-full px-2 py-1 text-[9px] font-black ${dailyChallenge.claimed ? 'bg-emerald-600 text-white' : 'bg-amber-200 text-amber-950'}`}>
+              {dailyChallenge.claimed ? 'COMPLETED' : `+${dailyChallenge.reward} PTS`}
+            </span>
+          </div>
+          <div className="grid grid-cols-3 gap-1.5">
+            {dailyChallenge.targets.map(target => (
+              <div key={target.label} className="rounded-lg bg-white px-2 py-1.5 text-center border border-amber-100">
+                <div className="text-[9px] font-bold text-slate-600">{target.label}</div>
+                <div className={`text-xs font-black ${target.progress >= target.target ? 'text-emerald-600' : 'text-slate-900'}`}>
+                  {target.progress}/{target.target}
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="mt-1.5 text-[9px] text-amber-800">Progress is saved automatically and continues across games.</p>
+        </section>
 
         <div className="grid grid-cols-1 gap-2.5">
           <button
@@ -188,7 +219,7 @@ export function HowToPlayModal({ onClose }: { onClose: () => void }) {
           <div>
             <strong className="text-cyan-950 font-black">Alien UFO Saucer (20% Smaller Target)</strong>:
             <ul className="list-disc list-inside mt-1 space-y-0.5 text-cyan-900 text-[11px]">
-              <li><strong>Hit UFO</strong>: Awards +200 pts and triggers a 2s EMP blackout pulse!</li>
+              <li><strong>Hit UFO</strong>: Awards a +200 point bonus with no life or local EMP penalty.</li>
               <li><strong>Miss UFO (Escapes)</strong>: Deducts <strong>-5% score penalty</strong>!</li>
             </ul>
           </div>
@@ -199,14 +230,14 @@ export function HowToPlayModal({ onClose }: { onClose: () => void }) {
           <div className="p-3 bg-amber-50 rounded-2xl border border-amber-300 flex items-start gap-2.5">
             <span className="text-xl">⚠️</span>
             <div>
-              <strong className="text-amber-900 font-black">Hazard Bird (-25% Score & -1 ❤️)</strong>: Spiky yellow hazard bird. Shooting it reduces your score by <strong>25%</strong> and takes <strong>1 Heart</strong>! Let it pass safely.
+              <strong className="text-amber-900 font-black">Hazard Bird (-1 ❤️)</strong>: Spiky yellow hazard bird. Shooting it takes <strong>1 Heart</strong>, but never reduces score. Let it pass safely.
             </div>
           </div>
 
           <div className="p-3 bg-red-50 rounded-2xl border border-red-300 flex items-start gap-2.5">
             <span className="text-xl">☠️</span>
             <div>
-              <strong className="text-red-900 font-black">Cursed Raven (-50% Score & -1 ❤️)</strong>: Devours innocent scoring birds in mid-air. Shooting it takes <strong>-50% score and 1 Heart</strong>!
+              <strong className="text-red-900 font-black">Cursed Raven (-1 ❤️)</strong>: Devours innocent scoring birds in mid-air. Shooting it takes <strong>1 Heart</strong>, but never reduces score!
             </div>
           </div>
         </div>
