@@ -23,11 +23,12 @@ import {
   Crown,
   Flame,
   Crosshair,
-  Target,
-  Radio,
-  CloudRain,
-  Snowflake,
-  Sun
+Target,
+Radio,
+Clock,
+CloudRain,
+Snowflake,
+Sun
 } from 'lucide-react';
 import {
   submitScoreToFirestore,
