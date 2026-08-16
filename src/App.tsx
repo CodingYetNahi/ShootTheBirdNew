@@ -1217,28 +1217,48 @@ if (
       const g = gameRef.current;
       const frameDt = Math.min(0.05, (timestamp - g.lastTime) / 1000);
       g.lastTime = timestamp;
-      const awaitingDuelStart = gameState === 'PLAYING'
-        && gameMode === 'MULTIPLAYER'
-        && Date.now() < g.matchStartsAt;
-      const dt = awaitingDuelStart ? 0 : frameDt;
+     const frameDt = Math.min(
+  0.05,
+  (timestamp - g.lastTime) / 1000
+);
 
-      if (gameState === 'PLAYING') {
-        if (gameMode === 'MULTIPLAYER') {
-          if (awaitingDuelStart) {
-            setDuelStartsIn(Math.max(1, Math.ceil((g.matchStartsAt - Date.now()) / 1000)));
-          } else {
-            setDuelStartsIn(0);
-            g.duelTime = Math.max(0, g.duelTime - dt);
-            const duelSecond = Math.ceil(g.duelTime);
-            if (duelSecond !== g.lastDuelSecond) {
-              g.lastDuelSecond = duelSecond;
-              setDuelTime(duelSecond);
-            }
-            if (g.duelTime <= 0) finishMatch();
-          }
-        }
-      const dt = Math.min(0.05, (timestamp - g.lastTime) / 1000);
-      g.lastTime = timestamp;
+g.lastTime = timestamp;
+
+const awaitingDuelStart =
+  gameState === 'PLAYING' &&
+  gameMode === 'MULTIPLAYER' &&
+  Date.now() < g.matchStartsAt;
+
+const dt = awaitingDuelStart ? 0 : frameDt;
+
+if (gameState === 'PLAYING' && gameMode === 'MULTIPLAYER') {
+  if (awaitingDuelStart) {
+    setDuelStartsIn(
+      Math.max(
+        1,
+        Math.ceil((g.matchStartsAt - Date.now()) / 1000)
+      )
+    );
+  } else {
+    setDuelStartsIn(0);
+
+    g.duelTime = Math.max(
+      0,
+      g.duelTime - dt
+    );
+
+    const duelSecond = Math.ceil(g.duelTime);
+
+    if (duelSecond !== g.lastDuelSecond) {
+      g.lastDuelSecond = duelSecond;
+      setDuelTime(duelSecond);
+    }
+
+    if (g.duelTime <= 0) {
+      finishMatch();
+    }
+  }
+}
 
       if (gameState === 'PLAYING') {
         g.elapsed += dt;
