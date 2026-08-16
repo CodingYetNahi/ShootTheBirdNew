@@ -43,9 +43,9 @@ export function drawDetailedAeroplane(
 
   ctx.save();
 
-  if (entity.vx < 0) {
-    ctx.scale(-1, 1);
-  }
+  if (entity.vx > 0) {
+  ctx.scale(-1, 1);
+}
 
   ctx.drawImage(
     img,
@@ -83,9 +83,9 @@ export function drawDetailedBird(
 
   ctx.translate(0, bob);
 
-  if (entity.vx < 0) {
-    ctx.scale(-1, 1);
-  }
+  if (entity.vx > 0) {
+  ctx.scale(-1, 1);
+}
 
   ctx.drawImage(
     img,
