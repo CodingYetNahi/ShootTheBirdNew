@@ -43,7 +43,7 @@ export function drawDetailedAeroplane(
 
   ctx.save();
 
- if (entity.vx < 0) {
+ if (entity.vx > 0) {
   ctx.scale(-1, 1);
 }
 
