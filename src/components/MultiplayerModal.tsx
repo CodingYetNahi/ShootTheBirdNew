@@ -51,6 +51,7 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [tauntInput, setTauntInput] = useState('');
+  const duelStartedRef = React.useRef(false);
   const [playerId] = useState(() => {
     let id = localStorage.getItem('shoot_bird_player_id');
     if (!id) {
@@ -82,7 +83,8 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
       setCurrentRoom(updatedRoom);
 
       // If room status changed to in_progress and not started yet, trigger duel
-      if (updatedRoom.status === 'in_progress') {
+      if (updatedRoom.status === 'in_progress' && !duelStartedRef.current) {
+        duelStartedRef.current = true;
         onStartDuel(updatedRoom, isHost);
       }
     }, setErrorMessage);
@@ -344,7 +346,9 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
                 <span className="text-[10px] text-indigo-300 font-bold uppercase tracking-wider block mt-0.5">
                   HOST {isHost ? '(YOU)' : ''}
                 </span>
-                <div className="mt-2 text-xs font-bold text-emerald-400">READY</div>
+                <div className={`mt-2 text-xs font-bold ${currentRoom.hostReady ? 'text-emerald-400' : 'text-amber-400'}`}>
+                  {currentRoom.hostReady ? 'READY' : 'NOT READY'}
+                </div>
               </div>
 
               {/* VS Badge */}
@@ -363,7 +367,9 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
                     <span className="text-[10px] text-purple-300 font-bold uppercase tracking-wider block mt-0.5">
                       RIVAL {!isHost ? '(YOU)' : ''}
                     </span>
-                    <div className="mt-2 text-xs font-bold text-emerald-400">CONNECTED</div>
+                    <div className={`mt-2 text-xs font-bold ${currentRoom.guestReady ? 'text-emerald-400' : 'text-amber-400'}`}>
+                      {currentRoom.guestReady ? 'READY' : 'NOT READY'}
+                    </div>
                   </>
                 ) : (
                   <div className="py-3 text-center">
@@ -376,6 +382,17 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
                 )}
               </div>
             </div>
+
+            <button
+              onClick={handleToggleReady}
+              className={`w-full rounded-xl border py-2.5 text-xs font-black transition-colors ${
+                (isHost ? currentRoom.hostReady : currentRoom.guestReady)
+                  ? 'border-emerald-400/40 bg-emerald-500/15 text-emerald-300'
+                  : 'border-amber-400/40 bg-amber-500/15 text-amber-200'
+              }`}
+            >
+              {(isHost ? currentRoom.hostReady : currentRoom.guestReady) ? '✓ YOU ARE READY' : 'MARK YOURSELF READY'}
+            </button>
 
             {/* Quick Taunts in Room */}
             <div className="space-y-1.5">
@@ -400,11 +417,11 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
               {isHost ? (
                 <button
                   onClick={handleHostStart}
-                  disabled={!currentRoom.guestId || loading}
+                  disabled={!currentRoom.guestId || !currentRoom.hostReady || !currentRoom.guestReady || loading}
                   className="w-full py-4 bg-gradient-to-r from-red-600 via-orange-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white font-black text-base rounded-2xl shadow-xl flex items-center justify-center gap-2 active:scale-98 transition-transform disabled:opacity-50 cursor-pointer"
                 >
                   <Swords className="w-5 h-5 fill-current" />
-                  <span>{currentRoom.guestId ? 'START 60s DUEL NOW!' : 'WAITING FOR PLAYER 2...'}</span>
+                  <span>{!currentRoom.guestId ? 'WAITING FOR PLAYER 2...' : currentRoom.hostReady && currentRoom.guestReady ? 'START 60s DUEL NOW!' : 'BOTH PLAYERS MUST BE READY'}</span>
                 </button>
               ) : (
                 <div className="p-3.5 bg-slate-800/80 rounded-2xl text-center border border-slate-700">

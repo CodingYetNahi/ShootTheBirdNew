@@ -1,113 +1,133 @@
-import normalBird from '../assets/game/bird-normal.webp';
-import fastBird from '../assets/game/bird-fast.webp';
-import smallBird from '../assets/game/bird-small.webp';
-import largeBird from '../assets/game/bird-large.webp';
-import rareBird from '../assets/game/bird-rare.webp';
-import armoredBird from '../assets/game/bird-armored.webp';
-import dangerBird from '../assets/game/bird-danger.webp';
-import aeroplane from '../assets/game/aeroplane.webp';
+import type { EntityTypeConfig } from './gameLogic';
 
-const imageCache: Record<string, HTMLImageElement> = {};
-
-function getImage(src: string) {
-  if (!imageCache[src]) {
-    const img = new Image();
-    img.src = src;
-    imageCache[src] = img;
-  }
-
-  return imageCache[src];
+export interface RenderEntity {
+  key: string;
+  radius: number;
+  dir: number;
+  hp?: number;
+  wingPhase?: number;
+  isDangerous?: boolean;
+  type: EntityTypeConfig;
 }
 
-const birdSprites: Record<string, string> = {
-  normal: normalBird,
-  fast: fastBird,
-  small: smallBird,
-  large: largeBird,
-  rare: rareBird,
-  armored: armoredBird,
-  hazard_25: dangerBird,
-  skull_50: dangerBird,
-};
+function faceTravelDirection(ctx: CanvasRenderingContext2D, entity: RenderEntity) {
+  // Shape artwork faces right. Mirror it only for leftward travel.
+  if (entity.dir < 0) ctx.scale(-1, 1);
+}
 
+/** Lightweight arcade aeroplane built from a few readable canvas shapes. */
 export function drawDetailedAeroplane(
   ctx: CanvasRenderingContext2D,
-  entity: any,
+  entity: RenderEntity,
   _elapsed: number
 ) {
-  const img = getImage(aeroplane);
-
-  if (!img.complete) return;
-
   const r = entity.radius;
-
   ctx.save();
+  faceTravelDirection(ctx, entity);
 
-  // Sprites are authored facing left. Flip horizontally when entity.dir === 1 (moving right).
-  if (entity.dir === 1) {
-    ctx.scale(-1, 1);
-  }
+  ctx.fillStyle = '#f8fafc';
+  ctx.strokeStyle = '#1e3a8a';
+  ctx.lineWidth = Math.max(2, r * 0.09);
+  ctx.beginPath();
+  ctx.moveTo(-r * 1.45, r * 0.2);
+  ctx.lineTo(r * 1.25, r * 0.2);
+  ctx.quadraticCurveTo(r * 1.65, 0, r * 1.2, -r * 0.2);
+  ctx.lineTo(-r * 1.2, -r * 0.2);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
 
-  ctx.drawImage(
-    img,
-    -r * 1.6,
-    -r * 0.8,
-    r * 3.2,
-    r * 1.6
-  );
+  ctx.fillStyle = '#2563eb';
+  ctx.beginPath();
+  ctx.moveTo(-r * 0.35, -r * 0.12);
+  ctx.lineTo(r * 0.25, -r * 0.95);
+  ctx.lineTo(r * 0.65, -r * 0.08);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(-r * 0.35, r * 0.12);
+  ctx.lineTo(r * 0.2, r * 0.9);
+  ctx.lineTo(r * 0.65, r * 0.08);
+  ctx.closePath();
+  ctx.fill();
 
+  ctx.fillStyle = '#ef4444';
+  ctx.fillRect(-r * 1.25, -r * 0.62, r * 0.28, r * 0.62);
   ctx.restore();
 }
+
+/** Simple, colorful bird silhouette that remains clear on small mobile canvases. */
 export function drawDetailedBird(
   ctx: CanvasRenderingContext2D,
-  entity: any,
+  entity: RenderEntity,
   elapsed: number
 ) {
-  const sprite =
-    entity.isDangerous
-      ? dangerBird
-      : birdSprites[entity.key] || normalBird;
-
-  const img = getImage(sprite);
-
-  if (!img.complete) return;
-
   const r = entity.radius;
-
-  // Wing beat animation
-  const flap = Math.sin(
-    elapsed * 12 + (entity.wingPhase || 0)
-  );
-
-  // Slight up/down flight movement
-  const bob = flap * r * 0.10;
-
-  // Compress/stretch vertically to simulate flapping wings
-  const flapScaleY = 0.92 + Math.abs(flap) * 0.32;
-
-  // Tiny body tilt makes flight feel less static
-  const tilt = flap * 0.04;
+  const config = entity.type;
+  const flap = Math.sin(elapsed * 11 + (entity.wingPhase || 0));
 
   ctx.save();
+  faceTravelDirection(ctx, entity);
+  ctx.rotate(flap * 0.035);
 
-  ctx.translate(0, bob);
+  // Tail.
+  ctx.fillStyle = config.tail;
+  ctx.beginPath();
+  ctx.moveTo(-r * 0.72, 0);
+  ctx.lineTo(-r * 1.35, -r * 0.48);
+  ctx.lineTo(-r * 1.15, r * 0.42);
+  ctx.closePath();
+  ctx.fill();
 
-  // Sprites are authored facing left. Flip horizontally when entity.dir === 1 (moving right).
-  if (entity.dir === 1) {
-    ctx.scale(-1, 1);
+  // Body and head.
+  ctx.fillStyle = config.color;
+  ctx.strokeStyle = entity.isDangerous ? '#7f1d1d' : 'rgba(15, 23, 42, 0.55)';
+  ctx.lineWidth = Math.max(1.5, r * 0.08);
+  ctx.beginPath();
+  ctx.ellipse(-r * 0.08, 0, r, r * 0.65, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = config.head;
+  ctx.beginPath();
+  ctx.arc(r * 0.62, -r * 0.18, r * 0.48, 0, Math.PI * 2);
+  ctx.fill();
+
+  // One broad wing communicates motion without decorative detail.
+  ctx.fillStyle = config.wing;
+  ctx.beginPath();
+  ctx.ellipse(-r * 0.2, flap * r * 0.15, r * 0.62, r * (0.25 + Math.abs(flap) * 0.18), -0.25, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = config.beak;
+  ctx.beginPath();
+  ctx.moveTo(r * 1.03, -r * 0.22);
+  ctx.lineTo(r * 1.5, -r * 0.05);
+  ctx.lineTo(r * 1.03, r * 0.05);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = '#0f172a';
+  ctx.beginPath();
+  ctx.arc(r * 0.72, -r * 0.31, Math.max(2, r * 0.08), 0, Math.PI * 2);
+  ctx.fill();
+
+  if (entity.key === 'armored' && (entity.hp ?? 0) > 1) {
+    ctx.strokeStyle = '#e2e8f0';
+    ctx.lineWidth = Math.max(3, r * 0.16);
+    ctx.beginPath();
+    ctx.arc(-r * 0.08, 0, r * 0.72, -1.1, 1.1);
+    ctx.stroke();
+  } else if (entity.isDangerous) {
+    ctx.strokeStyle = '#fef2f2';
+    ctx.lineWidth = Math.max(2, r * 0.1);
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.35, -r * 0.3);
+    ctx.lineTo(r * 0.15, r * 0.3);
+    ctx.moveTo(r * 0.15, -r * 0.3);
+    ctx.lineTo(-r * 0.35, r * 0.3);
+    ctx.stroke();
   }
-
-  ctx.rotate(tilt);
-
-  ctx.scale(1, flapScaleY);
-
-  ctx.drawImage(
-    img,
-    -r * 1.25,
-    -r,
-    r * 2.5,
-    r * 2
-  );
 
   ctx.restore();
 }

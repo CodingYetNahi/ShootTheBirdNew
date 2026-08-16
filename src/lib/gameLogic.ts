@@ -6,7 +6,6 @@ export interface EntityTypeConfig {
   radius: number;
   speed: number;
   points: number;
-  penaltyPercent?: number; // 25 or 50
   hp: number;
   color: string;
   light: string;
@@ -127,7 +126,6 @@ export const entityConfigs: Record<string, EntityTypeConfig> = {
     radius: 21,
     speed: 145,
     points: 0,
-    penaltyPercent: 25,
     hp: 1,
     color: '#eab308',
     light: '#fde047',
@@ -145,7 +143,6 @@ export const entityConfigs: Record<string, EntityTypeConfig> = {
     radius: 24,
     speed: 155,
     points: 0,
-    penaltyPercent: 50,
     hp: 1,
     color: '#831843',
     light: '#be185d',
