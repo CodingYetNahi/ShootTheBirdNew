@@ -312,18 +312,7 @@ export default function App() {
     stopBackgroundMusic(audioSysRef.current);
   }, []);
 
-  useEffect(() => {
-    const shouldDuck = Boolean(toastMessage) || showVolumePopup || showMultiplayerModal || (gameState !== 'PLAYING' && gameState !== 'MENU');
-    if (!shouldDuck) return;
-    const sys = audioSysRef.current;
-    sys.configuredMusicVolume = data.settings.music ? data.settings.musicVolume : 0;
-    duckMusic(sys);
-    setTimeout(() => {
-      setToastMessage(null);
-    }, 2500);
-  };
-
-  useEffect(() => {
+    useEffect(() => {
     const shouldDuck = Boolean(toastMessage) || showVolumePopup || showMultiplayerModal || (gameState !== 'PLAYING' && gameState !== 'MENU');
     if (!shouldDuck) return;
     duckMusic(audioSysRef.current, data.settings.music ? data.settings.musicVolume : 0);
