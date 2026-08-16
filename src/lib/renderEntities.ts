@@ -57,7 +57,6 @@ export function drawDetailedAeroplane(
 
   ctx.restore();
 }
-
 export function drawDetailedBird(
   ctx: CanvasRenderingContext2D,
   entity: any,
@@ -74,18 +73,33 @@ export function drawDetailedBird(
 
   const r = entity.radius;
 
-  const bob =
-    Math.sin(elapsed * 8 + (entity.wingPhase || 0)) *
-    r *
-    0.06;
+  // Wing beat animation
+  const flap = Math.sin(
+    elapsed * 12 + (entity.wingPhase || 0)
+  );
+
+  // Slight up/down flight movement
+  const bob = flap * r * 0.08;
+
+  // Compress/stretch vertically to simulate flapping wings
+  const flapScaleY = 0.82 + Math.abs(flap) * 0.22;
+
+  // Tiny body tilt makes flight feel less static
+  const tilt = flap * 0.04;
 
   ctx.save();
 
   ctx.translate(0, bob);
 
+  // Generated sprites face LEFT.
+  // Flip them only when flying RIGHT.
   if (entity.vx > 0) {
-  ctx.scale(-1, 1);
-}
+    ctx.scale(-1, 1);
+  }
+
+  ctx.rotate(tilt);
+
+  ctx.scale(1, flapScaleY);
 
   ctx.drawImage(
     img,
