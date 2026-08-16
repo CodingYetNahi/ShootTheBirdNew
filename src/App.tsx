@@ -69,7 +69,7 @@ import {
   playSoundExtraLife,
   playSoundSabotageAlert,
   startBackgroundMusic,
-  sstopBackgroundMusic,
+  stopBackgroundMusic,
 AudioSystem,
 duckMusic,
 restoreMusic,
