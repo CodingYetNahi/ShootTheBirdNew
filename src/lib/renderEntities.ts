@@ -91,8 +91,8 @@ export function drawDetailedBird(
 
   ctx.translate(0, bob);
 
-// Sprites naturally face right.
-// Flip them when travelling left.
+// Sprites naturally face left.
+// Flip them when travelling right.
 if (entity.vx > 0) {
   ctx.scale(-1, 1);
 }
