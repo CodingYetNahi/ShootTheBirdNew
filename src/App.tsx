@@ -449,7 +449,6 @@ export default function App() {
   };
 
   const startGame = (mode: 'SOLO' | 'MULTIPLAYER' = 'SOLO', duelRoom?: MultiplayerRoomData | null) => {
-  const startGame = (mode: 'SOLO' | 'MULTIPLAYER' = 'SOLO') => {
     const g = gameRef.current;
     const localDaily = loadLocalDailyProgress(dailyChallenge.date);
     g.score = 0;
@@ -545,7 +544,6 @@ export default function App() {
     setRivalScore(isHost ? room.guestScore || 0 : room.hostScore || 0);
     setRivalLives(isHost ? room.guestLives ?? 3 : room.hostLives ?? 3);
     startGame('MULTIPLAYER', room);
-    startGame('MULTIPLAYER');
     showToast(`⚔️ 1V1 DUEL STARTED! Destroy the rival!`);
   };
 
