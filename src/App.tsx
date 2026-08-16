@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import homeBird from './assets/game/bird-normal.webp';
 import {
   Play,
   RotateCcw,
@@ -179,86 +180,23 @@ function loadStoredData() {
 }
 
 // Vector Bird Mascot - Rich layered plumage & glossy anime sparkle
-export function BirdMascot({ size = 48, className = '' }: { size?: number; className?: string }) {
+export function BirdMascot({
+  size = 48,
+  className = ''
+}: {
+  size?: number;
+  className?: string;
+}) {
   return (
-    <svg
+    <img
+      src={homeBird}
+      alt="Bird"
       width={size}
       height={size}
-      viewBox="0 0 100 100"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      className={`inline-block drop-shadow-md ${className}`}
-    >
-      <defs>
-        <linearGradient id="birdBody" x1="15" y1="15" x2="85" y2="85" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#38bdf8" />
-          <stop offset="0.4" stopColor="#2563eb" />
-          <stop offset="1" stopColor="#1e3a8a" />
-        </linearGradient>
-        <linearGradient id="birdBelly" x1="30" y1="40" x2="70" y2="80" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#fef08a" />
-          <stop offset="0.6" stopColor="#fde047" />
-          <stop offset="1" stopColor="#f59e0b" />
-        </linearGradient>
-        <linearGradient id="birdWing" x1="20" y1="35" x2="60" y2="75" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#60a5fa" />
-          <stop offset="0.5" stopColor="#3b82f6" />
-          <stop offset="1" stopColor="#1d4ed8" />
-        </linearGradient>
-        <linearGradient id="birdBeak" x1="75" y1="40" x2="98" y2="55" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#fef08a" />
-          <stop offset="0.4" stopColor="#fbbf24" />
-          <stop offset="1" stopColor="#ea580c" />
-        </linearGradient>
-        <linearGradient id="crestGrad" x1="30" y1="5" x2="50" y2="25" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#93c5fd" />
-          <stop offset="0.5" stopColor="#3b82f6" />
-          <stop offset="1" stopColor="#1d4ed8" />
-        </linearGradient>
-      </defs>
-      {/* Layered Tail Feathers */}
-      <path d="M22 56L4 48C2 47 1 52 3 54L18 64L2 68C0 69 1 73 4 73L22 66Z" fill="#1e3a8a" />
-      <path d="M25 58L8 59C6 60 6 64 9 64L26 63Z" fill="#2563eb" />
-      {/* Body */}
-      <ellipse cx="48" cy="56" rx="30" ry="24" fill="url(#birdBody)" />
-      {/* Golden Chest Plumage */}
-      <path d="M38 46C45 46 60 50 65 62C67 68 62 76 50 78C38 80 30 72 32 62C33 54 36 46 38 46Z" fill="url(#birdBelly)" />
-      {/* Crest Feathers */}
-      <path d="M42 22C42 10 32 6 25 4C33 11 39 18 42 24Z" fill="url(#crestGrad)" />
-      <path d="M48 24C53 12 45 6 38 2C46 9 49 18 50 26Z" fill="url(#crestGrad)" />
-      {/* Head */}
-      <circle cx="64" cy="39" r="18" fill="url(#birdBody)" />
-      {/* Beak */}
-      <path d="M78 35L97 45L78 52Z" fill="url(#birdBeak)" />
-      <path d="M78 44L97 45" stroke="#c2410c" strokeWidth="1.2" />
-      {/* Cute Glossy Eye */}
-      <circle cx="68" cy="35" r="6.5" fill="#ffffff" />
-      <circle cx="70" cy="35" r="4.2" fill="#0f172a" />
-      <circle cx="71.5" cy="33.5" r="1.6" fill="#ffffff" />
-      <circle cx="68.5" cy="37" r="0.8" fill="#ffffff" />
-      {/* Articulated Wing */}
-      <path
-        d="M32 52C32 38 46 36 60 47C64 51 61 62 48 68C38 72 32 64 32 52Z"
-        fill="url(#birdWing)"
-      />
-      <path d="M36 50C42 43 52 43 56 49C54 55 46 61 38 59Z" fill="#93c5fd" opacity="0.75" />
-      {/* Rosy Cheek */}
-      <ellipse cx="64" cy="46" rx="5" ry="3" fill="#f43f5e" opacity="0.6" />
-    </svg>
+      className={`inline-block object-contain drop-shadow-md ${className}`}
+    />
   );
 }
-
-// Vector Aeroplane Mascot - Sleek Supersonic Jet
-export function PlaneMascot({ size = 48, className = '' }: { size?: number; className?: string }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 100 100"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      className={`inline-block drop-shadow-md ${className}`}
-    >
       <defs>
         <linearGradient id="jetFuse" x1="0" y1="40" x2="100" y2="60" gradientUnits="userSpaceOnUse">
           <stop stopColor="#f8fafc" />
