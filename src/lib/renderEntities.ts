@@ -43,9 +43,10 @@ export function drawDetailedAeroplane(
 
   ctx.save();
 
-if (entity.vx > 0) {
-  ctx.scale(-1, 1);
-}
+  // Sprites are authored facing left. Flip horizontally when entity.dir === 1 (moving right).
+  if (entity.dir === 1) {
+    ctx.scale(-1, 1);
+  }
 
   ctx.drawImage(
     img,
@@ -91,11 +92,10 @@ export function drawDetailedBird(
 
   ctx.translate(0, bob);
 
-// Sprites naturally face left.
-// Flip them when travelling right.
-if (entity.vx > 0) {
-  ctx.scale(-1, 1);
-}
+  // Sprites are authored facing left. Flip horizontally when entity.dir === 1 (moving right).
+  if (entity.dir === 1) {
+    ctx.scale(-1, 1);
+  }
 
   ctx.rotate(tilt);
 
