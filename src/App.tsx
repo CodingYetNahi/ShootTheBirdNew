@@ -25,6 +25,7 @@ import {
   Crosshair,
   Target,
   Radio,
+  Clock,
   CloudRain,
   Snowflake,
   Sun
@@ -95,26 +96,6 @@ import { challengeLabels, getDailyChallenge, safePlayerId, ChallengeBird } from 
 const STORAGE_KEY = 'birdShooterData_v7';
 const SETTINGS_KEY = 'birdShooter_userSettings_v7';
 const LIFETIME_STATS_KEY = 'birdShooter_lifetimeStats_v2';
-const DAILY_PROGRESS_KEY = 'birdShooter_dailyChallenge_v1';
-
-function loadLocalDailyProgress(date: string) {
-  try {
-    const saved = JSON.parse(localStorage.getItem(DAILY_PROGRESS_KEY) || 'null');
-    if (
-      saved?.date === date &&
-      typeof saved?.progress?.normal === 'number' &&
-      typeof saved?.progress?.fast === 'number' &&
-      typeof saved?.progress?.small === 'number'
-    ) return saved as { date: string; progress: Record<ChallengeBird, number>; claimed: boolean };
-  } catch {}
-  return null;
-}
-
-function saveLocalDailyProgress(date: string, progress: Record<ChallengeBird, number>, claimed: boolean) {
-  try {
-    localStorage.setItem(DAILY_PROGRESS_KEY, JSON.stringify({ date, progress, claimed }));
-  } catch {}
-}
 
 function loadLifetimeStats(): LifetimeStats {
   try {
@@ -538,7 +519,6 @@ export default function App() {
 
   const startGame = (mode: 'SOLO' | 'MULTIPLAYER' = 'SOLO') => {
     const g = gameRef.current;
-    const localDaily = loadLocalDailyProgress(dailyChallenge.date);
     g.score = 0;
     g.lives = 3;
     g.combo = 0;
@@ -1822,15 +1802,6 @@ export default function App() {
             onOpenHow={() => setGameState('HOW')}
             onOpenSettings={() => setGameState('SETTINGS')}
             onOpenMultiplayer={() => setShowMultiplayerModal(true)}
-            dailyChallenge={{
-              date: dailyChallenge.date,
-              timeLimit: dailyChallenge.timeLimit,
-              reward: dailyChallenge.reward,
-              claimed: dailyClaimed,
-              targets: (Object.keys(dailyChallenge.targets) as ChallengeBird[]).map(key => ({
-                label: challengeLabels[key], progress: dailyProgress[key], target: dailyChallenge.targets[key],
-              })),
-            }}
           />
         )}
 
