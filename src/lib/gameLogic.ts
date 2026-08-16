@@ -26,7 +26,7 @@ export const entityConfigs: Record<string, EntityTypeConfig> = {
     type: 'bird',
     name: 'Normal Bird',
     radius: 20,
-    speed: 130,
+    speed: 85,
     points: 10, // Scaled 5:1 (50 -> 10)
     hp: 1,
     color: '#f59e0b',
@@ -42,7 +42,7 @@ export const entityConfigs: Record<string, EntityTypeConfig> = {
     type: 'bird',
     name: 'Swift Bird',
     radius: 17,
-    speed: 196,
+    speed: 125,
     points: 20, // Scaled 5:1 (100 -> 20)
     hp: 1,
     color: '#f43f5e',
@@ -58,7 +58,7 @@ export const entityConfigs: Record<string, EntityTypeConfig> = {
     type: 'bird',
     name: 'Humming Bird',
     radius: 13,
-    speed: 164,
+    speed: 105,
     points: 35, // Scaled 5:1 (175 -> 35)
     hp: 1,
     color: '#10b981',
@@ -75,7 +75,7 @@ export const entityConfigs: Record<string, EntityTypeConfig> = {
     type: 'bird',
     name: 'Heavy Falcon',
     radius: 30,
-    speed: 100,
+    speed: 70,
     points: 25, // Scaled 5:1 (125 -> 25)
     hp: 1,
     color: '#8b5cf6',
@@ -91,7 +91,7 @@ export const entityConfigs: Record<string, EntityTypeConfig> = {
     type: 'bird',
     name: 'Golden Phoenix',
     radius: 24,
-    speed: 165,
+    speed: 110,
     points: 60, // Scaled 5:1 (300 -> 60)
     hp: 1,
     color: '#eab308',
@@ -108,7 +108,7 @@ export const entityConfigs: Record<string, EntityTypeConfig> = {
     type: 'bird',
     name: 'Armored Bird',
     radius: 26,
-    speed: 120,
+    speed: 80,
     points: 120, // Scaled 5:1 (600 -> 120)
     hp: 2,
     color: '#475569',
@@ -124,7 +124,7 @@ export const entityConfigs: Record<string, EntityTypeConfig> = {
     type: 'hazard_25',
     name: 'Hazard Bird (-1 Heart)',
     radius: 21,
-    speed: 145,
+    speed: 110,
     points: 0,
     hp: 1,
     color: '#eab308',
@@ -141,7 +141,7 @@ export const entityConfigs: Record<string, EntityTypeConfig> = {
     type: 'skull_50',
     name: 'Cursed Raven (-1 Heart)',
     radius: 24,
-    speed: 155,
+    speed: 100,
     points: 0,
     hp: 1,
     color: '#831843',
@@ -158,7 +158,7 @@ export const entityConfigs: Record<string, EntityTypeConfig> = {
     type: 'plane',
     name: 'Bonus Aeroplane',
     radius: 29,
-    speed: 135,
+    speed: 110,
     points: 100, // Scaled 5:1 (500 -> 100)
     hp: 1,
     color: '#ffffff',
@@ -175,7 +175,7 @@ export const entityConfigs: Record<string, EntityTypeConfig> = {
     type: 'ufo',
     name: 'Alien UFO Saucer',
     radius: 27, // Reduced by 20% from 34
-    speed: 175,
+    speed: 125,
     points: 200, // Scaled 5:1 (1000 -> 200)
     hp: 1,
     color: '#06b6d4',
