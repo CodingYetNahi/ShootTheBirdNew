@@ -91,8 +91,8 @@ export function drawDetailedBird(
 
   ctx.translate(0, bob);
 
-  // Generated sprites face LEFT.
-  // Flip them only when flying RIGHT.
+// Sprites naturally face right.
+// Flip them when travelling left.
   if (entity.vx < 0) {
   ctx.scale(-1, 1);
 }
