@@ -188,7 +188,7 @@ export function HowToPlayModal({ onClose }: { onClose: () => void }) {
           <div>
             <strong className="text-cyan-950 font-black">Alien UFO Saucer (20% Smaller Target)</strong>:
             <ul className="list-disc list-inside mt-1 space-y-0.5 text-cyan-900 text-[11px]">
-              <li><strong>Hit UFO</strong>: Awards +200 pts and triggers a 2s EMP blackout pulse!</li>
+              <li><strong>Hit UFO</strong>: Awards a +200 point bonus with no life or local EMP penalty.</li>
               <li><strong>Miss UFO (Escapes)</strong>: Deducts <strong>-5% score penalty</strong>!</li>
             </ul>
           </div>
@@ -199,14 +199,14 @@ export function HowToPlayModal({ onClose }: { onClose: () => void }) {
           <div className="p-3 bg-amber-50 rounded-2xl border border-amber-300 flex items-start gap-2.5">
             <span className="text-xl">⚠️</span>
             <div>
-              <strong className="text-amber-900 font-black">Hazard Bird (-25% Score & -1 ❤️)</strong>: Spiky yellow hazard bird. Shooting it reduces your score by <strong>25%</strong> and takes <strong>1 Heart</strong>! Let it pass safely.
+              <strong className="text-amber-900 font-black">Hazard Bird (-1 ❤️)</strong>: Spiky yellow hazard bird. Shooting it takes <strong>1 Heart</strong>, but never reduces score. Let it pass safely.
             </div>
           </div>
 
           <div className="p-3 bg-red-50 rounded-2xl border border-red-300 flex items-start gap-2.5">
             <span className="text-xl">☠️</span>
             <div>
-              <strong className="text-red-900 font-black">Cursed Raven (-50% Score & -1 ❤️)</strong>: Devours innocent scoring birds in mid-air. Shooting it takes <strong>-50% score and 1 Heart</strong>!
+              <strong className="text-red-900 font-black">Cursed Raven (-1 ❤️)</strong>: Devours innocent scoring birds in mid-air. Shooting it takes <strong>1 Heart</strong>, but never reduces score!
             </div>
           </div>
         </div>

@@ -7,6 +7,8 @@ export interface AudioSystem {
   sfxGain: GainNode | null;
   musicTimer: any;
   musicStep: number;
+  configuredMusicVolume: number;
+  duckDepth: number;
 }
 
 export function createAudioSystem(): AudioSystem {
@@ -17,6 +19,8 @@ export function createAudioSystem(): AudioSystem {
     sfxGain: null,
     musicTimer: null,
     musicStep: 0,
+    configuredMusicVolume: 0.6,
+    duckDepth: 0,
   };
 }
 
@@ -43,7 +47,30 @@ export function initAudioContext(sys: AudioSystem, soundEnabled: boolean, musicE
     sys.masterGain = master;
     sys.musicGain = musicG;
     sys.sfxGain = sfxG;
+    sys.configuredMusicVolume = musicEnabled ? musicVol : 0;
   } catch {}
+}
+
+function rampMusic(sys: AudioSystem, target: number, seconds = 0.28) {
+  if (!sys.ctx || !sys.musicGain) return;
+  const now = sys.ctx.currentTime;
+  sys.musicGain.gain.cancelScheduledValues(now);
+  sys.musicGain.gain.setValueAtTime(sys.musicGain.gain.value, now);
+  sys.musicGain.gain.linearRampToValueAtTime(Math.max(0, target), now + seconds);
+}
+
+/** Smoothly lowers music for alerts and overlays. Calls may be safely nested. */
+export function duckMusic(sys: AudioSystem, musicVolume: number, amount = 0.42) {
+  sys.configuredMusicVolume = musicVolume;
+  sys.duckDepth++;
+  rampMusic(sys, musicVolume * amount);
+}
+
+/** Releases one duck request and restores the player's configured volume. */
+export function restoreMusic(sys: AudioSystem, musicVolume: number) {
+  sys.configuredMusicVolume = musicVolume;
+  sys.duckDepth = Math.max(0, sys.duckDepth - 1);
+  rampMusic(sys, sys.duckDepth > 0 ? musicVolume * 0.42 : musicVolume, 0.36);
 }
 
 export function playSfxTone(

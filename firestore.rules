@@ -8,5 +8,18 @@ service cloud.firestore {
     match /multiplayer_rooms/{roomId} {
       allow read, write: if true;
     }
+    // Per-install anonymous player IDs keep names out of document paths. Once a
+    // daily reward is claimed it can never be reset, even by a stale client.
+    match /daily_challenges/{challengeId} {
+      allow read: if true;
+      allow create: if request.resource.data.playerId is string
+        && request.resource.data.date is string
+        && request.resource.data.progress is map;
+      allow update: if request.resource.data.playerId == resource.data.playerId
+        && request.resource.data.date == resource.data.date
+        && (!(resource.data.rewardClaimed == true)
+          || request.resource.data.rewardClaimed == true);
+      allow delete: if false;
+    }
   }
 }
