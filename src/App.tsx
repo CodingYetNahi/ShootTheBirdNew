@@ -1469,7 +1469,7 @@ if (gameState === 'PLAYING' && gameMode === 'MULTIPLAYER') {
               ctx.globalAlpha = fade;
               ctx.rotate(entity.rot);
             } else {
-              if (entity.dir < 0) ctx.scale(-1, 1);
+              if (entity.dir > 0) ctx.scale(-1, 1);
             }
 
             const r = entity.radius;
