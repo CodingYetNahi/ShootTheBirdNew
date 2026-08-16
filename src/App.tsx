@@ -336,13 +336,9 @@ export default function App() {
   const [showVolumePopup, setShowVolumePopup] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const dailyChallenge = useRef(getDailyChallenge()).current;
-  // Conflict resolution: retain the locally persisted state. Initializing these
-  // values to zero would erase the home-page challenge after every reload.
-  const initialDaily = useRef(loadLocalDailyProgress(dailyChallenge.date)).current;
-  const [dailyProgress, setDailyProgress] = useState<Record<ChallengeBird, number>>(
-    initialDaily?.progress ?? { normal: 0, fast: 0, small: 0 }
-  );
-  const [dailyClaimed, setDailyClaimed] = useState(Boolean(initialDaily?.claimed));
+  const [dailyProgress, setDailyProgress] = useState<Record<ChallengeBird, number>>({ normal: 0, fast: 0, small: 0 });
+  const [dailyTime, setDailyTime] = useState(dailyChallenge.timeLimit);
+  const [dailyClaimed, setDailyClaimed] = useState(false);
 
   // Match Performance State
   const [currentWeather, setCurrentWeather] = useState<WeatherType>('clear');
@@ -393,6 +389,7 @@ export default function App() {
     dailyTime: dailyChallenge.timeLimit,
     dailyClaimed: false,
     dailyClaimPending: false,
+    lastDailySecond: dailyChallenge.timeLimit,
   });
 
   const showToast = (msg: string) => {
@@ -408,27 +405,6 @@ export default function App() {
     duckMusic(audioSysRef.current, data.settings.music ? data.settings.musicVolume : 0);
     return () => restoreMusic(audioSysRef.current, data.settings.music ? data.settings.musicVolume : 0);
   }, [toastMessage, showVolumePopup, showMultiplayerModal, gameState, data.settings.music, data.settings.musicVolume]);
-
-  // Hydrate the home-page challenge without requiring the player to start a
-  // game first. Local progress remains available if Firestore is unreachable.
-  useEffect(() => {
-    const playerId = safePlayerId(data.playerName || 'Player');
-    void loadDailyChallenge(playerId, dailyChallenge.date).then(record => {
-      if (!record) return;
-      setDailyProgress(current => {
-        const merged = {
-          normal: Math.max(current.normal, record.progress?.normal || 0),
-          fast: Math.max(current.fast, record.progress?.fast || 0),
-          small: Math.max(current.small, record.progress?.small || 0),
-        };
-        saveLocalDailyProgress(
-          dailyChallenge.date, merged, Boolean(loadLocalDailyProgress(dailyChallenge.date)?.claimed) || Boolean(record.rewardClaimed)
-        );
-        return merged;
-      });
-      if (record.rewardClaimed) setDailyClaimed(true);
-    });
-  }, [data.playerName, dailyChallenge.date]);
 
   // Subscribe to real-time leaderboard
   useEffect(() => {
@@ -590,10 +566,11 @@ export default function App() {
     g.highestCombo = 0;
     g.powerUpsCollected = 0;
     g.reactionTimes = [];
-    g.dailyProgress = localDaily?.progress || { normal: 0, fast: 0, small: 0 };
+    g.dailyProgress = { normal: 0, fast: 0, small: 0 };
     g.dailyTime = dailyChallenge.timeLimit;
-    g.dailyClaimed = Boolean(localDaily?.claimed);
+    g.dailyClaimed = false;
     g.dailyClaimPending = false;
+    g.lastDailySecond = dailyChallenge.timeLimit;
     g.lastTime = performance.now();
 
     setScore(0);
@@ -605,7 +582,8 @@ export default function App() {
     setCurrentWeather('clear');
     setSummaryStats(null);
     setDailyProgress(g.dailyProgress);
-    setDailyClaimed(g.dailyClaimed);
+    setDailyTime(dailyChallenge.timeLimit);
+    setDailyClaimed(false);
     setGameState('PLAYING');
 
     unlockAudio();
@@ -615,13 +593,8 @@ export default function App() {
     const playerId = safePlayerId(data.playerName || nameInput || 'Player');
     loadDailyChallenge(playerId, dailyChallenge.date).then(record => {
       if (!record) return;
-      g.dailyProgress = {
-        normal: Math.max(g.dailyProgress.normal, record.progress?.normal || 0),
-        fast: Math.max(g.dailyProgress.fast, record.progress?.fast || 0),
-        small: Math.max(g.dailyProgress.small, record.progress?.small || 0),
-      };
-      g.dailyClaimed = g.dailyClaimed || Boolean(record.rewardClaimed);
-      saveLocalDailyProgress(dailyChallenge.date, g.dailyProgress, g.dailyClaimed);
+      g.dailyProgress = { normal: record.progress?.normal || 0, fast: record.progress?.fast || 0, small: record.progress?.small || 0 };
+      g.dailyClaimed = Boolean(record.rewardClaimed);
       setDailyProgress({ ...g.dailyProgress });
       setDailyClaimed(g.dailyClaimed);
     });
@@ -1016,7 +989,6 @@ export default function App() {
               const birdKey = hitTarget.key as ChallengeBird;
               g.dailyProgress[birdKey] = Math.min(dailyChallenge.targets[birdKey], g.dailyProgress[birdKey] + 1);
               setDailyProgress({ ...g.dailyProgress });
-              saveLocalDailyProgress(dailyChallenge.date, g.dailyProgress, false);
               const playerId = safePlayerId(data.playerName || 'Player');
               void saveDailyChallengeProgress(playerId, dailyChallenge.date, g.dailyProgress);
               const complete = (Object.keys(dailyChallenge.targets) as ChallengeBird[]).every(k => g.dailyProgress[k] >= dailyChallenge.targets[k]);
@@ -1029,7 +1001,6 @@ export default function App() {
                   g.score += dailyChallenge.reward;
                   setScore(g.score);
                   setDailyClaimed(true);
-                  saveLocalDailyProgress(dailyChallenge.date, g.dailyProgress, true);
                   showToast(`🏆 DAILY CHALLENGE COMPLETE! +${dailyChallenge.reward} points`);
                 });
               }
@@ -1271,6 +1242,11 @@ export default function App() {
         g.elapsed += dt;
         if (!g.dailyClaimed && g.dailyTime > 0) {
           g.dailyTime = Math.max(0, g.dailyTime - dt);
+          const second = Math.ceil(g.dailyTime);
+          if (second !== g.lastDailySecond) {
+            g.lastDailySecond = second;
+            setDailyTime(second);
+          }
         }
         g.spawnTimer -= dt;
         g.planeTimer -= dt;
@@ -1709,6 +1685,20 @@ export default function App() {
               </div>
             </div>
           </div>
+        )}
+
+        {gameState === 'PLAYING' && (
+          <aside className="absolute top-3 right-3 z-20 w-[150px] sm:w-[185px] rounded-xl bg-slate-950/80 text-white p-2.5 shadow-lg border border-white/20 pointer-events-none" aria-label="Daily Challenge progress">
+            <div className="flex justify-between text-[10px] sm:text-xs font-black mb-1">
+              <span>🏆 DAILY</span><span className={dailyTime <= 10 ? 'text-red-300' : 'text-cyan-200'}><Clock className="inline w-3 h-3" /> {dailyClaimed ? 'DONE' : `${dailyTime}s`}</span>
+            </div>
+            {(Object.keys(dailyChallenge.targets) as ChallengeBird[]).map(key => (
+              <div key={key} className="flex justify-between text-[9px] sm:text-[10px] leading-4">
+                <span>{challengeLabels[key]}</span><b className={dailyProgress[key] >= dailyChallenge.targets[key] ? 'text-emerald-300' : ''}>{dailyProgress[key]}/{dailyChallenge.targets[key]}</b>
+              </div>
+            ))}
+            <div className="mt-1 text-[8px] text-amber-200 font-bold">Reward: +{dailyChallenge.reward}</div>
+          </aside>
         )}
 
         {/* Responsive bottom game controls */}
