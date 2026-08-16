@@ -834,11 +834,14 @@ export default function App() {
         hitTarget.rot = 0;
         hitTarget.rotSpeed = (hitTarget.dir >= 0 ? 1 : -1) * (5 + Math.random() * 3);
 
-        // Track Birds Hunted
-        if (!hitTarget.isDangerous && hitTarget.key !== 'plane' && hitTarget.key !== 'ufo') {
-        if (!hitTarget.isDangerous && hitTarget.key !== 'plane') {
-          g.birdsHunted++;
-        }
+             // Track Birds Hunted
+if (
+  !hitTarget.isDangerous &&
+  hitTarget.key !== 'plane' &&
+  hitTarget.key !== 'ufo'
+) {
+  g.birdsHunted++;
+}
 
         // UFO is a score-only bonus; multiplayer sabotage targets the rival separately
         if (hitTarget.key === 'ufo') {
