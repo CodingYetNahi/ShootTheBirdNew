@@ -10,6 +10,8 @@ import {
   VolumeX,
   Music,
   Shield,
+  Plane,
+  Crosshair,
   Sparkles,
   Heart,
   Volume1,
@@ -70,6 +72,7 @@ import {
   playSoundSabotageAlert,
   startBackgroundMusic,
   stopBackgroundMusic,
+  AudioSystem, duckMusic, restoreMusic, updateMusicVolume
   AudioSystem, duckMusic, restoreMusic
 } from './lib/audio';
 import {
@@ -196,6 +199,7 @@ export function BirdMascot({
     />
   );
 }
+
       
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -216,6 +220,8 @@ export default function App() {
   const [rivalLives, setRivalLives] = useState(3);
   const [rivalName, setRivalName] = useState('Challenger');
   const [lastSabotageTime, setLastSabotageTime] = useState(0);
+  const [duelTime, setDuelTime] = useState(60);
+  const [duelStartsIn, setDuelStartsIn] = useState(0);
 
   const [score, setScore] = useState(0);
   const [bestScore, setBestScore] = useState(Number(data.best) || 0);
@@ -240,6 +246,7 @@ export default function App() {
 
   // Audio System Ref
   const audioSysRef = useRef<AudioSystem>(createAudioSystem());
+  const toastTimerRef = useRef<number | null>(null);
 
   // Mutable Game Loop State
   const gameRef = useRef({
@@ -283,10 +290,32 @@ export default function App() {
     dailyClaimed: false,
     dailyClaimPending: false,
     lastDailySecond: dailyChallenge.timeLimit,
+    finishing: false,
+    duelTime: 60,
+    lastDuelSecond: 60,
+    matchStartsAt: 0,
   });
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
+    if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = window.setTimeout(() => {
+      setToastMessage(null);
+      toastTimerRef.current = null;
+    }, 2500);
+  };
+
+  useEffect(() => () => {
+    if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
+    stopBackgroundMusic(audioSysRef.current);
+  }, []);
+
+  useEffect(() => {
+    const shouldDuck = Boolean(toastMessage) || showVolumePopup || showMultiplayerModal || (gameState !== 'PLAYING' && gameState !== 'MENU');
+    if (!shouldDuck) return;
+    const sys = audioSysRef.current;
+    sys.configuredMusicVolume = data.settings.music ? data.settings.musicVolume : 0;
+    duckMusic(sys);
     setTimeout(() => {
       setToastMessage(null);
     }, 2500);
@@ -339,6 +368,7 @@ export default function App() {
 
     const sys = audioSysRef.current;
     if (sys.musicGain) {
+      updateMusicVolume(sys, updatedSettings.music ? updatedSettings.musicVolume : 0);
       sys.musicGain.gain.value = updatedSettings.music ? updatedSettings.musicVolume : 0;
     }
     if (sys.sfxGain) {
@@ -429,6 +459,7 @@ export default function App() {
     startGame();
   };
 
+  const startGame = (mode: 'SOLO' | 'MULTIPLAYER' = 'SOLO', duelRoom?: MultiplayerRoomData | null) => {
   const startGame = (mode: 'SOLO' | 'MULTIPLAYER' = 'SOLO') => {
     const g = gameRef.current;
     const localDaily = loadLocalDailyProgress(dailyChallenge.date);
@@ -459,6 +490,16 @@ export default function App() {
     g.highestCombo = 0;
     g.powerUpsCollected = 0;
     g.reactionTimes = [];
+    g.dailyProgress = localDaily?.progress || { normal: 0, fast: 0, small: 0 };
+    g.dailyTime = dailyChallenge.timeLimit;
+    g.dailyClaimed = Boolean(localDaily?.claimed);
+    g.dailyClaimPending = false;
+    g.lastDailySecond = dailyChallenge.timeLimit;
+    g.finishing = false;
+    const roomForMatch = duelRoom || activeMultiRoom;
+    g.duelTime = roomForMatch?.gameDuration || 60;
+    g.lastDuelSecond = Math.ceil(g.duelTime);
+    g.matchStartsAt = mode === 'MULTIPLAYER' ? roomForMatch?.gameStartTime || Date.now() : 0;
     g.dailyProgress = { normal: 0, fast: 0, small: 0 };
     g.dailyTime = dailyChallenge.timeLimit;
     g.dailyClaimed = false;
@@ -477,6 +518,8 @@ export default function App() {
     setDailyProgress({ ...g.dailyProgress });
     setDailyTime(dailyChallenge.timeLimit);
     setDailyClaimed(g.dailyClaimed);
+    setDuelTime(g.lastDuelSecond);
+    setDuelStartsIn(mode === 'MULTIPLAYER' ? Math.max(0, Math.ceil((g.matchStartsAt - Date.now()) / 1000)) : 0);
     setDailyProgress(g.dailyProgress);
     setDailyTime(dailyChallenge.timeLimit);
     setDailyClaimed(false);
@@ -512,6 +555,7 @@ export default function App() {
     setRivalName(isHost ? room.guestName || 'Challenger' : room.hostName);
     setRivalScore(isHost ? room.guestScore || 0 : room.hostScore || 0);
     setRivalLives(isHost ? room.guestLives ?? 3 : room.hostLives ?? 3);
+    startGame('MULTIPLAYER', room);
     startGame('MULTIPLAYER');
     showToast(`⚔️ 1V1 DUEL STARTED! Destroy the rival!`);
   };
@@ -800,6 +844,7 @@ export default function App() {
         hitTarget.rotSpeed = (hitTarget.dir >= 0 ? 1 : -1) * (5 + Math.random() * 3);
 
         // Track Birds Hunted
+        if (!hitTarget.isDangerous && hitTarget.key !== 'plane' && hitTarget.key !== 'ufo') {
         if (!hitTarget.isDangerous && hitTarget.key !== 'plane') {
           g.birdsHunted++;
         }
@@ -847,6 +892,13 @@ export default function App() {
               size: 16,
             });
           } else {
+            g.combo = 0;
+            g.multiplier = 1;
+            setShowCombo(false);
+            g.lives = Math.max(0, g.lives - 1);
+            setLives(g.lives);
+
+            playSoundDangerPenalty(sys, hitTarget.key === 'skull_50' ? 50 : 25);
             const penaltyPct = hitTarget.penaltyPercent || 25;
             g.combo = 0;
             g.multiplier = 1;
@@ -865,6 +917,7 @@ export default function App() {
               x: hitTarget.x,
               y: hitTarget.y - 15,
               text: '⚠️ -1 ❤️',
+              color: hitTarget.key === 'skull_50' ? '#ef4444' : '#f59e0b',
               color: penaltyPct === 50 ? '#ef4444' : '#f59e0b',
               life: 1.3,
               maxLife: 1.3,
@@ -894,11 +947,19 @@ export default function App() {
               const birdKey = hitTarget.key as ChallengeBird;
               g.dailyProgress[birdKey] = Math.min(dailyChallenge.targets[birdKey], g.dailyProgress[birdKey] + 1);
               setDailyProgress({ ...g.dailyProgress });
+              saveLocalDailyProgress(dailyChallenge.date, g.dailyProgress, g.dailyClaimed);
               const playerId = safePlayerId(data.playerName || 'Player');
               void saveDailyChallengeProgress(playerId, dailyChallenge.date, g.dailyProgress);
               const complete = (Object.keys(dailyChallenge.targets) as ChallengeBird[]).every(k => g.dailyProgress[k] >= dailyChallenge.targets[k]);
               if (complete && !g.dailyClaimPending) {
                 g.dailyClaimPending = true;
+                claimDailyChallengeReward(
+                  playerId,
+                  data.playerName || 'Player',
+                  dailyChallenge.date,
+                  g.dailyProgress,
+                  dailyChallenge.reward,
+                ).then(claimed => {
                 claimDailyChallengeReward(playerId, dailyChallenge.date, g.dailyProgress).then(claimed => {
                   g.dailyClaimPending = false;
                   if (!claimed || g.dailyClaimed) return;
@@ -906,6 +967,7 @@ export default function App() {
                   g.score += dailyChallenge.reward;
                   setScore(g.score);
                   setDailyClaimed(true);
+                  saveLocalDailyProgress(dailyChallenge.date, g.dailyProgress, true);
                   showToast(`🏆 DAILY CHALLENGE COMPLETE! +${dailyChallenge.reward} points`);
                 });
               }
@@ -1008,6 +1070,8 @@ export default function App() {
     if (now - g.pointer.lastShot < 85) return;
     g.pointer.lastShot = now;
 
+    const projectileCount = g.activePowerUp?.type === 'multi_shot' ? 3 : 1;
+    g.shotsFired += projectileCount;
     g.shotsFired++;
     playSoundShoot(audioSysRef.current);
 
@@ -1063,6 +1127,8 @@ export default function App() {
   // End of match summary computation
   const finishMatch = () => {
     const g = gameRef.current;
+    if (g.finishing) return;
+    g.finishing = true;
     stopBackgroundMusic(audioSysRef.current);
     playSoundGameOver(audioSysRef.current);
 
@@ -1117,6 +1183,9 @@ export default function App() {
       ufoKills: g.ufoKills,
       powerUpsCollected: g.powerUpsCollected,
       gameMode,
+      winnerName: gameMode === 'MULTIPLAYER'
+        ? finalScore === rivalScore ? 'Draw' : finalScore > rivalScore ? playerName : rivalName
+        : null,
       rivalName,
       rivalScore,
     };
@@ -1127,6 +1196,8 @@ export default function App() {
     submitScoreToFirestore(playerName, finalScore);
 
     if (gameMode === 'MULTIPLAYER' && activeMultiRoom?.id) {
+      const winnerName = finalScore === rivalScore ? 'Draw' : finalScore > rivalScore ? playerName : rivalName;
+      completeMultiplayerMatch(activeMultiRoom.id, winnerName);
       completeMultiplayerMatch(activeMultiRoom.id);
     }
   };
@@ -1140,6 +1211,28 @@ export default function App() {
     const loop = (timestamp: number) => {
       if (!running) return;
       const g = gameRef.current;
+      const frameDt = Math.min(0.05, (timestamp - g.lastTime) / 1000);
+      g.lastTime = timestamp;
+      const awaitingDuelStart = gameState === 'PLAYING'
+        && gameMode === 'MULTIPLAYER'
+        && Date.now() < g.matchStartsAt;
+      const dt = awaitingDuelStart ? 0 : frameDt;
+
+      if (gameState === 'PLAYING') {
+        if (gameMode === 'MULTIPLAYER') {
+          if (awaitingDuelStart) {
+            setDuelStartsIn(Math.max(1, Math.ceil((g.matchStartsAt - Date.now()) / 1000)));
+          } else {
+            setDuelStartsIn(0);
+            g.duelTime = Math.max(0, g.duelTime - dt);
+            const duelSecond = Math.ceil(g.duelTime);
+            if (duelSecond !== g.lastDuelSecond) {
+              g.lastDuelSecond = duelSecond;
+              setDuelTime(duelSecond);
+            }
+            if (g.duelTime <= 0) finishMatch();
+          }
+        }
       const dt = Math.min(0.05, (timestamp - g.lastTime) / 1000);
       g.lastTime = timestamp;
 
@@ -1241,6 +1334,7 @@ export default function App() {
             } else {
               const isExempt = entity.key === 'small' || entity.isDangerous || entity.key === 'plane';
               if (!isExempt) {
+                g.lives = Math.max(0, g.lives - 1);
                 g.lives--;
                 playSoundEscape(audioSysRef.current);
                 g.combo = 0;
@@ -1572,6 +1666,39 @@ export default function App() {
           className="block rounded-2xl shadow-2xl bg-[#38bdf8] touch-none cursor-crosshair border border-white/40"
         />
 
+        {/* Daily challenge stays visible without covering bottom controls or lives. */}
+        {gameState === 'PLAYING' && (
+          <div className="absolute top-3 right-3 z-20 w-[min(12.5rem,48vw)] rounded-xl border border-amber-200/80 bg-slate-950/80 px-3 py-2 text-white shadow-lg backdrop-blur-md pointer-events-none">
+            <div className="flex items-center justify-between gap-2 text-[10px] font-black uppercase tracking-wide text-amber-300">
+              <span>🏆 Daily Challenge</span>
+              <span className={dailyTime <= 10 && !dailyClaimed ? 'text-red-300' : 'text-sky-200'}>
+                {dailyClaimed ? 'Claimed' : `${dailyTime}s`}
+              </span>
+            </div>
+            <div className="mt-1 grid grid-cols-3 gap-1 text-center text-[9px] font-bold">
+              {(Object.keys(dailyChallenge.targets) as ChallengeBird[]).map((key) => (
+                <span key={key} className={dailyProgress[key] >= dailyChallenge.targets[key] ? 'text-emerald-300' : 'text-white'}>
+                  {challengeLabels[key]} {dailyProgress[key]}/{dailyChallenge.targets[key]}
+                </span>
+              ))}
+            </div>
+            {!dailyClaimed && dailyTime === 0 && (
+              <div className="mt-1 text-center text-[9px] font-bold text-slate-300">Try again next game</div>
+            )}
+          </div>
+        )}
+
+        {gameState === 'PLAYING' && gameMode === 'MULTIPLAYER' && (
+          <div className="absolute top-20 left-3 z-30 rounded-xl border border-indigo-300/50 bg-slate-950/85 px-3 py-2 text-center text-white shadow-lg backdrop-blur-md pointer-events-none">
+            <div className="text-[10px] font-black uppercase tracking-wide text-indigo-200">
+              {duelStartsIn > 0 ? `Starts in ${duelStartsIn}` : `${duelTime}s duel`}
+            </div>
+            <div className="mt-0.5 whitespace-nowrap text-[10px] font-bold">
+              You {score.toLocaleString()} · {rivalName} {rivalScore.toLocaleString()} · {Math.max(0, rivalLives)} ❤️
+            </div>
+          </div>
+        )}
+
         {/* Active Power-Up HUD Widget */}
         {activeBuff && gameState === 'PLAYING' && (
           <div className="absolute top-4 left-4 z-20 px-3 py-1.5 rounded-xl bg-white/90 backdrop-blur-md shadow-lg border border-white/80 flex items-center gap-2">
@@ -1591,6 +1718,7 @@ export default function App() {
             </div>
           </div>
         )}
+
 
      
         {/* Responsive bottom game controls */}

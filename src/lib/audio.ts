@@ -200,6 +200,7 @@ export function playSoundSabotageAlert(sys: AudioSystem) {
 // Background Music Synthesizer
 export function startBackgroundMusic(sys: AudioSystem, musicVol: number) {
   if (sys.musicTimer || !sys.ctx || !sys.musicGain) return;
+  updateMusicVolume(sys, musicVol, 0.08);
 
   const chords = [
     [261.63, 329.63, 392.0, 493.88], // Cmaj7
@@ -236,7 +237,8 @@ export function startBackgroundMusic(sys: AudioSystem, musicVol: number) {
         osc.type = i === 0 ? 'triangle' : 'sine';
         osc.frequency.setValueAtTime(freq, t);
 
-        const vol = (i === 0 ? 0.04 : 0.02) * musicVol;
+        // User volume is applied once at musicGain, not again per oscillator.
+        const vol = i === 0 ? 0.04 : 0.02;
         gain.gain.setValueAtTime(0.001, t);
         gain.gain.linearRampToValueAtTime(vol, t + 0.3);
         gain.gain.exponentialRampToValueAtTime(0.0001, t + 1.8);
@@ -256,7 +258,7 @@ export function startBackgroundMusic(sys: AudioSystem, musicVol: number) {
     mOsc.type = 'sine';
     mOsc.frequency.setValueAtTime(noteFreq, t);
 
-    const mVol = 0.025 * musicVol;
+    const mVol = 0.025;
     mGain.gain.setValueAtTime(0.001, t);
     mGain.gain.linearRampToValueAtTime(mVol, t + 0.05);
     mGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.55);

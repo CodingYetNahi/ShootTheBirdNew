@@ -39,15 +39,14 @@ function firestoreErrorMessage(error: unknown, action: string) {
 }
 
 function withFirestoreTimeout<T>(operation: Promise<T>, action: string, timeoutMs = 12000): Promise<T> {
-  return Promise.race([
-    operation,
-    new Promise<T>((_, reject) => {
-      globalThis.setTimeout(() => reject({
-        code: 'unavailable',
-        message: `Timed out while trying to ${action}`,
-      }), timeoutMs);
-    }),
-  ]);
+  let timeoutId: ReturnType<typeof globalThis.setTimeout>;
+  const timeout = new Promise<T>((_, reject) => {
+    timeoutId = globalThis.setTimeout(() => reject({
+      code: 'unavailable',
+      message: `Timed out while trying to ${action}`,
+    }), timeoutMs);
+  });
+  return Promise.race([operation, timeout]).finally(() => globalThis.clearTimeout(timeoutId));
 }
 
 export interface FirestoreScore {
@@ -251,6 +250,9 @@ export async function joinMultiplayerRoom(
       if (!roomSnap.exists()) throw new Error('Room not found. Check the code and try again!');
       const data = roomSnap.data() as MultiplayerRoomData;
       if (data.hostId === guestId) throw new Error('You are already the host of this room.');
+      if (data.guestId === guestId) return { ...data, id: cleanCode };
+      if (data.status !== 'waiting') throw new Error('Match already in progress or completed.');
+      if (data.guestId) throw new Error('Room is already full!');
       if (data.status !== 'waiting' && data.guestId !== guestId) {
         throw new Error('Match already in progress or completed.');
       }
