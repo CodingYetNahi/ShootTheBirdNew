@@ -197,52 +197,7 @@ export function BirdMascot({
     />
   );
 }
-      <defs>
-        <linearGradient id="jetFuse" x1="0" y1="40" x2="100" y2="60" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#f8fafc" />
-          <stop offset="0.5" stopColor="#e2e8f0" />
-          <stop offset="1" stopColor="#94a3b8" />
-        </linearGradient>
-        <linearGradient id="jetCanopy" x1="50" y1="35" x2="80" y2="50" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#e0f2fe" />
-          <stop offset="0.4" stopColor="#38bdf8" />
-          <stop offset="1" stopColor="#0369a1" />
-        </linearGradient>
-        <linearGradient id="jetExhaust" x1="25" y1="50" x2="0" y2="50" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#f97316" />
-          <stop offset="0.6" stopColor="#38bdf8" />
-          <stop offset="1" stopColor="rgba(56, 189, 248, 0)" />
-        </linearGradient>
-      </defs>
-      {/* Jet Flame */}
-      <path d="M22 46L2 50L22 54Z" fill="url(#jetExhaust)" />
-      {/* Wings */}
-      <path d="M52 50L30 84L46 84L68 50Z" fill="#cbd5e1" />
-      <path d="M52 50L30 16L46 16L68 50Z" fill="#e2e8f0" />
-      {/* Wing Stripes */}
-      <path d="M36 74L32 82L42 82L44 74Z" fill="#ef4444" />
-      <path d="M36 26L32 18L42 18L44 26Z" fill="#ef4444" />
-      {/* Wingtip Beacon LEDs */}
-      <circle cx="34" cy="83" r="2.5" fill="#22c55e" />
-      <circle cx="34" cy="17" r="2.5" fill="#ef4444" />
-      {/* Tail Fin */}
-      <path d="M20 50L8 24L20 24L28 50Z" fill="#2563eb" />
-      <path d="M12 28L10 25L17 25L18 28Z" fill="#ffffff" />
-      {/* Fuselage */}
-      <path
-        d="M92 50C76 42 40 42 18 45L18 55C40 58 76 58 92 50Z"
-        fill="url(#jetFuse)"
-      />
-      {/* Blue Racing Stripe */}
-      <path d="M85 50L22 47L22 53L85 50Z" fill="#2563eb" />
-      {/* Cockpit Glass Canopy */}
-      <ellipse cx="64" cy="46" rx="15" ry="6" fill="url(#jetCanopy)" />
-      <ellipse cx="64" cy="46" rx="4" ry="4" fill="#0f172a" opacity="0.8" />
-      <path d="M54 44C58 42 70 42 75 44" stroke="#ffffff" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  );
-}
-
+      
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
