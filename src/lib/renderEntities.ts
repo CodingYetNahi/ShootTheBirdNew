@@ -79,10 +79,10 @@ export function drawDetailedBird(
   );
 
   // Slight up/down flight movement
-  const bob = flap * r * 0.08;
+  const bob = flap * r * 0.10;
 
   // Compress/stretch vertically to simulate flapping wings
-  const flapScaleY = 0.82 + Math.abs(flap) * 0.22;
+  const flapScaleY = 0.92 + Math.abs(flap) * 0.32;
 
   // Tiny body tilt makes flight feel less static
   const tilt = flap * 0.04;
@@ -93,9 +93,9 @@ export function drawDetailedBird(
 
   // Generated sprites face LEFT.
   // Flip them only when flying RIGHT.
-  if (entity.vx > 0) {
-    ctx.scale(-1, 1);
-  }
+  if (entity.vx < 0) {
+  ctx.scale(-1, 1);
+}
 
   ctx.rotate(tilt);
 
