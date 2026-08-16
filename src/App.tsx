@@ -1,0 +1,1903 @@
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  Play,
+  RotateCcw,
+  Trophy,
+  HelpCircle,
+  Settings as SettingsIcon,
+  Pause,
+  Volume2,
+  VolumeX,
+  Music,
+  Shield,
+  Sparkles,
+  Heart,
+  Volume1,
+  Plane,
+  AlertTriangle,
+  Skull,
+  Share2,
+  Swords,
+  Users,
+  Zap,
+  Crown,
+  Flame,
+  Crosshair,
+  Target,
+  Radio,
+  Clock,
+  CloudRain,
+  Snowflake,
+  Sun
+} from 'lucide-react';
+import {
+  submitScoreToFirestore,
+  subscribeToLeaderboard,
+  MultiplayerRoomData,
+  updateRoomPlayer,
+  sendRoomSabotage,
+  sendRoomTaunt,
+  completeMultiplayerMatch,
+  subscribeToMultiplayerRoom
+} from './lib/firebase';
+import { MultiplayerModal } from './components/MultiplayerModal';
+import { MatchSummaryModal } from './components/MatchSummaryModal';
+import {
+  MainMenuModal,
+  HowToPlayModal,
+  SettingsModal,
+  LeaderboardModal,
+  GameSettings
+} from './components/Modals';
+import {
+  createAudioSystem,
+  initAudioContext,
+  playSoundShoot,
+  playSoundHit,
+  playSoundEscape,
+  playSoundCombo,
+  playSoundBonusPlane,
+  playSoundDangerPenalty,
+  playSoundGameOver,
+  playSoundChomp,
+  playSoundUfoSpawn,
+  playSoundUfoEmp,
+  playSoundUfoExplode,
+  playSoundCriticalHit,
+  playSoundPowerUpSpawn,
+  playSoundPowerUpCollect,
+  playSoundExtraLife,
+  playSoundSabotageAlert,
+  startBackgroundMusic,
+  stopBackgroundMusic,
+  AudioSystem
+} from './lib/audio';
+import {
+  entityConfigs,
+  getDifficultyFactor,
+  updateWeatherCycle,
+  drawWeatherAtmosphere,
+  drawPowerUpCapsules
+} from './lib/gameLogic';
+import {
+  drawDetailedBird,
+  drawDetailedAeroplane
+} from './lib/renderEntities';
+import {
+  WeatherType,
+  PowerUpType,
+  PowerUpEntity,
+  ActivePowerUp,
+  MatchPerformanceStats,
+  LifetimeStats
+} from './types';
+
+const STORAGE_KEY = 'birdShooterData_v7';
+const SETTINGS_KEY = 'birdShooter_userSettings_v7';
+const LIFETIME_STATS_KEY = 'birdShooter_lifetimeStats_v2';
+
+function loadLifetimeStats(): LifetimeStats {
+  try {
+    const raw = localStorage.getItem(LIFETIME_STATS_KEY);
+    if (raw) {
+      return JSON.parse(raw);
+    }
+  } catch {}
+  return {
+    lifetimeHeadshots: 0,
+    lifetimeBirdsSaved: 0,
+    lifetimeBirdsHunted: 0,
+    totalGamesPlayed: 0,
+    bestAccuracy: 0,
+    fastestReactionMs: 9999,
+  };
+}
+
+function saveLifetimeStats(stats: LifetimeStats) {
+  try {
+    localStorage.setItem(LIFETIME_STATS_KEY, JSON.stringify(stats));
+  } catch {}
+}
+
+function loadStoredData() {
+  let savedSettings: GameSettings = {
+    sound: true,
+    music: true,
+    musicVolume: 0.6,
+    soundVolume: 0.7,
+    vibration: true,
+    fps: false,
+  };
+
+  try {
+    const rawSettings = localStorage.getItem(SETTINGS_KEY);
+    if (rawSettings) {
+      savedSettings = { ...savedSettings, ...JSON.parse(rawSettings) };
+    }
+  } catch {}
+
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return {
+        playerName: parsed.playerName || '',
+        scores: parsed.scores || ([] as { name: string; score: number; date: string }[]),
+        best: parsed.best || 0,
+        settings: { ...savedSettings, ...(parsed.settings || {}) },
+      };
+    }
+  } catch {}
+
+  return {
+    playerName: '',
+    scores: [] as { name: string; score: number; date: string }[],
+    best: 0,
+    settings: savedSettings,
+  };
+}
+
+// Vector Bird Mascot - Rich layered plumage & glossy anime sparkle
+export function BirdMascot({ size = 48, className = '' }: { size?: number; className?: string }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 100 100"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className={`inline-block drop-shadow-md ${className}`}
+    >
+      <defs>
+        <linearGradient id="birdBody" x1="15" y1="15" x2="85" y2="85" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#38bdf8" />
+          <stop offset="0.4" stopColor="#2563eb" />
+          <stop offset="1" stopColor="#1e3a8a" />
+        </linearGradient>
+        <linearGradient id="birdBelly" x1="30" y1="40" x2="70" y2="80" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#fef08a" />
+          <stop offset="0.6" stopColor="#fde047" />
+          <stop offset="1" stopColor="#f59e0b" />
+        </linearGradient>
+        <linearGradient id="birdWing" x1="20" y1="35" x2="60" y2="75" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#60a5fa" />
+          <stop offset="0.5" stopColor="#3b82f6" />
+          <stop offset="1" stopColor="#1d4ed8" />
+        </linearGradient>
+        <linearGradient id="birdBeak" x1="75" y1="40" x2="98" y2="55" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#fef08a" />
+          <stop offset="0.4" stopColor="#fbbf24" />
+          <stop offset="1" stopColor="#ea580c" />
+        </linearGradient>
+        <linearGradient id="crestGrad" x1="30" y1="5" x2="50" y2="25" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#93c5fd" />
+          <stop offset="0.5" stopColor="#3b82f6" />
+          <stop offset="1" stopColor="#1d4ed8" />
+        </linearGradient>
+      </defs>
+      {/* Layered Tail Feathers */}
+      <path d="M22 56L4 48C2 47 1 52 3 54L18 64L2 68C0 69 1 73 4 73L22 66Z" fill="#1e3a8a" />
+      <path d="M25 58L8 59C6 60 6 64 9 64L26 63Z" fill="#2563eb" />
+      {/* Body */}
+      <ellipse cx="48" cy="56" rx="30" ry="24" fill="url(#birdBody)" />
+      {/* Golden Chest Plumage */}
+      <path d="M38 46C45 46 60 50 65 62C67 68 62 76 50 78C38 80 30 72 32 62C33 54 36 46 38 46Z" fill="url(#birdBelly)" />
+      {/* Crest Feathers */}
+      <path d="M42 22C42 10 32 6 25 4C33 11 39 18 42 24Z" fill="url(#crestGrad)" />
+      <path d="M48 24C53 12 45 6 38 2C46 9 49 18 50 26Z" fill="url(#crestGrad)" />
+      {/* Head */}
+      <circle cx="64" cy="39" r="18" fill="url(#birdBody)" />
+      {/* Beak */}
+      <path d="M78 35L97 45L78 52Z" fill="url(#birdBeak)" />
+      <path d="M78 44L97 45" stroke="#c2410c" strokeWidth="1.2" />
+      {/* Cute Glossy Eye */}
+      <circle cx="68" cy="35" r="6.5" fill="#ffffff" />
+      <circle cx="70" cy="35" r="4.2" fill="#0f172a" />
+      <circle cx="71.5" cy="33.5" r="1.6" fill="#ffffff" />
+      <circle cx="68.5" cy="37" r="0.8" fill="#ffffff" />
+      {/* Articulated Wing */}
+      <path
+        d="M32 52C32 38 46 36 60 47C64 51 61 62 48 68C38 72 32 64 32 52Z"
+        fill="url(#birdWing)"
+      />
+      <path d="M36 50C42 43 52 43 56 49C54 55 46 61 38 59Z" fill="#93c5fd" opacity="0.75" />
+      {/* Rosy Cheek */}
+      <ellipse cx="64" cy="46" rx="5" ry="3" fill="#f43f5e" opacity="0.6" />
+    </svg>
+  );
+}
+
+// Vector Aeroplane Mascot - Sleek Supersonic Jet
+export function PlaneMascot({ size = 48, className = '' }: { size?: number; className?: string }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 100 100"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className={`inline-block drop-shadow-md ${className}`}
+    >
+      <defs>
+        <linearGradient id="jetFuse" x1="0" y1="40" x2="100" y2="60" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#f8fafc" />
+          <stop offset="0.5" stopColor="#e2e8f0" />
+          <stop offset="1" stopColor="#94a3b8" />
+        </linearGradient>
+        <linearGradient id="jetCanopy" x1="50" y1="35" x2="80" y2="50" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#e0f2fe" />
+          <stop offset="0.4" stopColor="#38bdf8" />
+          <stop offset="1" stopColor="#0369a1" />
+        </linearGradient>
+        <linearGradient id="jetExhaust" x1="25" y1="50" x2="0" y2="50" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#f97316" />
+          <stop offset="0.6" stopColor="#38bdf8" />
+          <stop offset="1" stopColor="rgba(56, 189, 248, 0)" />
+        </linearGradient>
+      </defs>
+      {/* Jet Flame */}
+      <path d="M22 46L2 50L22 54Z" fill="url(#jetExhaust)" />
+      {/* Wings */}
+      <path d="M52 50L30 84L46 84L68 50Z" fill="#cbd5e1" />
+      <path d="M52 50L30 16L46 16L68 50Z" fill="#e2e8f0" />
+      {/* Wing Stripes */}
+      <path d="M36 74L32 82L42 82L44 74Z" fill="#ef4444" />
+      <path d="M36 26L32 18L42 18L44 26Z" fill="#ef4444" />
+      {/* Wingtip Beacon LEDs */}
+      <circle cx="34" cy="83" r="2.5" fill="#22c55e" />
+      <circle cx="34" cy="17" r="2.5" fill="#ef4444" />
+      {/* Tail Fin */}
+      <path d="M20 50L8 24L20 24L28 50Z" fill="#2563eb" />
+      <path d="M12 28L10 25L17 25L18 28Z" fill="#ffffff" />
+      {/* Fuselage */}
+      <path
+        d="M92 50C76 42 40 42 18 45L18 55C40 58 76 58 92 50Z"
+        fill="url(#jetFuse)"
+      />
+      {/* Blue Racing Stripe */}
+      <path d="M85 50L22 47L22 53L85 50Z" fill="#2563eb" />
+      {/* Cockpit Glass Canopy */}
+      <ellipse cx="64" cy="46" rx="15" ry="6" fill="url(#jetCanopy)" />
+      <ellipse cx="64" cy="46" rx="4" ry="4" fill="#0f172a" opacity="0.8" />
+      <path d="M54 44C58 42 70 42 75 44" stroke="#ffffff" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export default function App() {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  // Storage & State
+  const [data, setData] = useState(loadStoredData);
+  const [lifetimeStats, setLifetimeStats] = useState<LifetimeStats>(loadLifetimeStats);
+  const [gameState, setGameState] = useState<
+    'MENU' | 'NAME' | 'PLAYING' | 'PAUSED' | 'SETTINGS' | 'SETTINGS_PAUSED' | 'HOW' | 'RANKS' | 'SUMMARY'
+  >('MENU');
+  const [gameMode, setGameMode] = useState<'SOLO' | 'MULTIPLAYER'>('SOLO');
+  const [showMultiplayerModal, setShowMultiplayerModal] = useState(false);
+  const [activeMultiRoom, setActiveMultiRoom] = useState<MultiplayerRoomData | null>(null);
+  const [isHostPlayer, setIsHostPlayer] = useState(false);
+  const [rivalScore, setRivalScore] = useState(0);
+  const [rivalCombo, setRivalCombo] = useState(0);
+  const [rivalLives, setRivalLives] = useState(3);
+  const [rivalName, setRivalName] = useState('Challenger');
+  const [lastSabotageTime, setLastSabotageTime] = useState(0);
+
+  const [score, setScore] = useState(0);
+  const [bestScore, setBestScore] = useState(Number(data.best) || 0);
+  const [multiplier, setMultiplier] = useState(1);
+  const [comboText, setComboText] = useState('');
+  const [showCombo, setShowCombo] = useState(false);
+  const [lives, setLives] = useState(3);
+  const [fpsDisplay, setFpsDisplay] = useState('60 FPS');
+  const [nameInput, setNameInput] = useState(data.playerName || '');
+  const [globalRanks, setGlobalRanks] = useState<{ name: string; score: number }[]>([]);
+  const [showVolumePopup, setShowVolumePopup] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Match Performance State
+  const [currentWeather, setCurrentWeather] = useState<WeatherType>('clear');
+  const [activeBuff, setActiveBuff] = useState<ActivePowerUp | null>(null);
+  const [summaryStats, setSummaryStats] = useState<MatchPerformanceStats | null>(null);
+
+  // Audio System Ref
+  const audioSysRef = useRef<AudioSystem>(createAudioSystem());
+
+  // Mutable Game Loop State
+  const gameRef = useRef({
+    birds: [] as any[],
+    particles: [] as any[],
+    floatingTexts: [] as any[],
+    powerUps: [] as PowerUpEntity[],
+    activePowerUp: null as ActivePowerUp | null,
+    weatherParticles: [] as any[],
+    weather: 'clear' as WeatherType,
+    weatherTimer: 0,
+    score: 0,
+    lives: 3,
+    combo: 0,
+    multiplier: 1,
+    elapsed: 0,
+    spawnTimer: 0.25,
+    planeTimer: 4.0,
+    ufoTimer: 7.0,
+    blankoutTimer: 0,
+    lastAwarded40kMultiplier: 0,
+    lastTime: performance.now(),
+    width: 480,
+    height: 700,
+    dpr: 1,
+    pointer: { x: 240, y: 350, active: false, lastShot: 0 },
+    fpsCounter: 0,
+    fpsTime: 0,
+    animFrameId: 0,
+    shotsFired: 0,
+    shotsHit: 0,
+    criticalHits: 0,
+    birdsSaved: 0,
+    birdsHunted: 0,
+    ufoKills: 0,
+    highestCombo: 0,
+    powerUpsCollected: 0,
+    reactionTimes: [] as number[],
+  });
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage(null);
+    }, 2500);
+  };
+
+  // Subscribe to real-time leaderboard
+  useEffect(() => {
+    const unsub = subscribeToLeaderboard((scores) => {
+      setGlobalRanks(scores);
+    });
+    return () => unsub();
+  }, []);
+
+  const unlockAudio = () => {
+    const sys = audioSysRef.current;
+    initAudioContext(sys, data.settings.sound, data.settings.music, data.settings.soundVolume, data.settings.musicVolume);
+    if (sys.ctx && sys.ctx.state === 'suspended') {
+      sys.ctx.resume();
+    }
+  };
+
+  const handleMusicVolumeChange = (vol: number) => {
+    const clamped = Math.max(0, Math.min(1, vol));
+    saveSettings({ musicVolume: clamped });
+  };
+
+  const handleSoundVolumeChange = (vol: number) => {
+    const clamped = Math.max(0, Math.min(1, vol));
+    saveSettings({ soundVolume: clamped });
+  };
+
+  const saveSettings = (newSettings: Partial<GameSettings>) => {
+    const updatedSettings = { ...data.settings, ...newSettings };
+    const updated = {
+      ...data,
+      settings: updatedSettings,
+    };
+    setData(updated);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(updatedSettings));
+    } catch {}
+
+    const sys = audioSysRef.current;
+    if (sys.musicGain) {
+      sys.musicGain.gain.value = updatedSettings.music ? updatedSettings.musicVolume : 0;
+    }
+    if (sys.sfxGain) {
+      sys.sfxGain.gain.value = updatedSettings.sound ? updatedSettings.soundVolume : 0;
+    }
+
+    if (newSettings.music !== undefined || newSettings.musicVolume !== undefined) {
+      if (updatedSettings.music && updatedSettings.musicVolume > 0) {
+        unlockAudio();
+        startBackgroundMusic(sys, updatedSettings.musicVolume);
+      } else {
+        stopBackgroundMusic(sys);
+      }
+    }
+  };
+
+  // Unlock audio on first gesture
+  useEffect(() => {
+    const handleInitialUserGesture = () => {
+      unlockAudio();
+      if (data.settings.music && (gameState === 'PLAYING' || gameState === 'MENU')) {
+        startBackgroundMusic(audioSysRef.current, data.settings.musicVolume);
+      }
+    };
+    window.addEventListener('pointerdown', handleInitialUserGesture, { once: true });
+    window.addEventListener('keydown', handleInitialUserGesture, { once: true });
+    return () => {
+      window.removeEventListener('pointerdown', handleInitialUserGesture);
+      window.removeEventListener('keydown', handleInitialUserGesture);
+    };
+  }, [data.settings.music, gameState]);
+
+  // Resize canvas
+  const handleResize = () => {
+    if (!canvasRef.current || !containerRef.current) return;
+    const canvas = canvasRef.current;
+    const container = containerRef.current;
+
+    const availableHeight = container.clientHeight || window.innerHeight - 130;
+    const maxWidth = Math.min(container.clientWidth - 16, 560);
+    const ratio = 0.62;
+
+    let w = maxWidth;
+    let h = Math.min(availableHeight, Math.floor(w / ratio));
+
+    if (h > availableHeight) {
+      h = availableHeight;
+      w = Math.floor(h * ratio);
+    }
+
+    w = Math.max(280, Math.floor(w));
+    h = Math.max(420, Math.floor(h));
+
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    gameRef.current.width = w;
+    gameRef.current.height = h;
+    gameRef.current.dpr = dpr;
+
+    canvas.width = Math.floor(w * dpr);
+    canvas.height = Math.floor(h * dpr);
+    canvas.style.width = `${w}px`;
+    canvas.style.height = `${h}px`;
+
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+  };
+
+  const requestStart = () => {
+    unlockAudio();
+    if (!data.playerName) {
+      setGameState('NAME');
+    } else {
+      startGame();
+    }
+  };
+
+  const saveName = () => {
+    const trimmed = nameInput.trim().slice(0, 20);
+    if (!trimmed) {
+      showToast('Please enter a nickname!');
+      return;
+    }
+    const updated = { ...data, playerName: trimmed };
+    setData(updated);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    startGame();
+  };
+
+  const startGame = (mode: 'SOLO' | 'MULTIPLAYER' = 'SOLO') => {
+    const g = gameRef.current;
+    g.score = 0;
+    g.lives = 3;
+    g.combo = 0;
+    g.multiplier = 1;
+    g.elapsed = 0;
+    g.spawnTimer = 0.2;
+    g.planeTimer = 3.5 + Math.random() * 4.0;
+    g.ufoTimer = 6.5 + Math.random() * 5.0;
+    g.blankoutTimer = 0;
+    g.lastAwarded40kMultiplier = 0;
+    g.birds = [];
+    g.particles = [];
+    g.floatingTexts = [];
+    g.powerUps = [];
+    g.activePowerUp = null;
+    g.weather = 'clear';
+    g.weatherTimer = 0;
+    g.weatherParticles = [];
+    g.shotsFired = 0;
+    g.shotsHit = 0;
+    g.criticalHits = 0;
+    g.birdsSaved = 0;
+    g.birdsHunted = 0;
+    g.ufoKills = 0;
+    g.highestCombo = 0;
+    g.powerUpsCollected = 0;
+    g.reactionTimes = [];
+    g.lastTime = performance.now();
+
+    setScore(0);
+    setLives(3);
+    setMultiplier(1);
+    setShowCombo(false);
+    setGameMode(mode);
+    setActiveBuff(null);
+    setCurrentWeather('clear');
+    setSummaryStats(null);
+    setGameState('PLAYING');
+
+    unlockAudio();
+    if (data.settings.music) {
+      startBackgroundMusic(audioSysRef.current, data.settings.musicVolume);
+    }
+  };
+
+  const handleStartDuel = (room: MultiplayerRoomData, isHost: boolean) => {
+    setActiveMultiRoom(room);
+    setIsHostPlayer(isHost);
+    setShowMultiplayerModal(false);
+    setRivalName(isHost ? room.guestName || 'Challenger' : room.hostName);
+    setRivalScore(isHost ? room.guestScore || 0 : room.hostScore || 0);
+    setRivalLives(isHost ? room.guestLives ?? 3 : room.hostLives ?? 3);
+    startGame('MULTIPLAYER');
+    showToast(`⚔️ 1V1 DUEL STARTED! Destroy the rival!`);
+  };
+
+  // Sync multiplayer state
+  useEffect(() => {
+    if (gameState !== 'PLAYING' || gameMode !== 'MULTIPLAYER' || !activeMultiRoom?.id) return;
+    const interval = setInterval(() => {
+      const g = gameRef.current;
+      updateRoomPlayer(activeMultiRoom.id, isHostPlayer, g.score, g.combo, g.lives);
+    }, 380);
+    return () => clearInterval(interval);
+  }, [gameState, gameMode, activeMultiRoom?.id, isHostPlayer]);
+
+  // Subscribe to live room updates
+  useEffect(() => {
+    if (!activeMultiRoom?.id) return;
+    const unsub = subscribeToMultiplayerRoom(activeMultiRoom.id, (room) => {
+      if (!room) return;
+      setActiveMultiRoom(room);
+
+      const isCurrentHost = isHostPlayer;
+      setRivalScore(isCurrentHost ? room.guestScore || 0 : room.hostScore || 0);
+      setRivalCombo(isCurrentHost ? room.guestCombo || 0 : room.hostCombo || 0);
+      setRivalLives(isCurrentHost ? room.guestLives ?? 3 : room.hostLives ?? 3);
+
+      if (room.sabotage) {
+        const myTarget = isCurrentHost ? 'host' : 'guest';
+        if (room.sabotage.target === myTarget && room.sabotage.timestamp > lastSabotageTime) {
+          setLastSabotageTime(room.sabotage.timestamp);
+          const g = gameRef.current;
+          g.blankoutTimer = 2.0;
+          playSoundSabotageAlert(audioSysRef.current);
+          playSoundUfoEmp(audioSysRef.current);
+          showToast(`⚡ ${room.sabotage.from} SABOTAGED YOU WITH EMP BLACKOUT! (2s)`);
+        }
+      }
+
+      if (room.status === 'completed' && gameState === 'PLAYING') {
+        finishMatch();
+      }
+    });
+    return () => unsub();
+  }, [activeMultiRoom?.id, isHostPlayer, lastSabotageTime, gameState]);
+
+  // Spawn entity logic
+  const spawnEntity = () => {
+    const g = gameRef.current;
+    const activeEntities = g.birds.filter((b: any) => b.alive && !b.dying);
+    if (activeEntities.length >= 3) return;
+
+    let key = 'normal';
+    const isUfoReady = g.ufoTimer <= 0;
+    const isPlaneReady = g.planeTimer <= 0;
+
+    if (isUfoReady && Math.random() < 0.45) {
+      key = 'ufo';
+      g.ufoTimer = 10.0 + Math.random() * 8.0;
+      playSoundUfoSpawn(audioSysRef.current);
+      showToast('🛸 WARNING: ALIEN UFO INCOMING! DESTROY OR ESCAPE (-5% PENALTY)!');
+    } else if (isPlaneReady && Math.random() < 0.35) {
+      key = 'plane';
+      g.planeTimer = 7.0 + Math.random() * 8.0;
+    } else {
+      const r = Math.random();
+      if (r < 0.28) key = 'normal';
+      else if (r < 0.46) key = 'fast';
+      else if (r < 0.60) key = 'small';
+      else if (r < 0.72) key = 'large';
+      else if (r < 0.82) key = 'hazard_25';
+      else if (r < 0.90) key = 'skull_50';
+      else if (r < 0.96) key = 'rare';
+      else key = 'armored';
+    }
+
+    const type = entityConfigs[key];
+    // Difficulty curve based strictly on BIRDS HUNTED
+    const diff = getDifficultyFactor(g.birdsHunted);
+    const speedBoost = 1 + diff * 0.45;
+    const speed = type.speed * (0.9 + Math.random() * 0.2) * speedBoost;
+
+    let x: number, y: number, vx: number, vy = 0, dir: number;
+    const isPlane = key === 'plane';
+    const isUfo = key === 'ufo';
+
+    if (isUfo) {
+      // Fly from any side
+      const ufoEntryType = Math.floor(Math.random() * 4);
+      if (ufoEntryType === 0) {
+        x = -type.radius - 35;
+        y = 50 + Math.random() * (g.height * 0.35);
+        vx = speed * 1.05;
+        dir = 1;
+      } else if (ufoEntryType === 1) {
+        x = g.width + type.radius + 35;
+        y = 50 + Math.random() * (g.height * 0.35);
+        vx = -speed * 1.05;
+        dir = -1;
+      } else if (ufoEntryType === 2) {
+        x = -type.radius - 20;
+        y = -20;
+        vx = speed * 0.9;
+        vy = speed * 0.55;
+        dir = 1;
+      } else {
+        x = g.width + type.radius + 20;
+        y = -20;
+        vx = -speed * 0.9;
+        vy = speed * 0.55;
+        dir = -1;
+      }
+    } else if (isPlane) {
+      y = 35 + Math.random() * (g.height * 0.20);
+      if (Math.random() < 0.5) {
+        x = -type.radius - 35;
+        vx = speed;
+        dir = 1;
+      } else {
+        x = g.width + type.radius + 35;
+        vx = -speed;
+        dir = -1;
+      }
+    } else {
+      const topBound = 55;
+      const bottomBound = g.height - 120;
+      const totalSpan = bottomBound - topBound;
+      const lanes = [
+        topBound + totalSpan * 0.15,
+        topBound + totalSpan * 0.45,
+        topBound + totalSpan * 0.75,
+      ];
+
+      let bestLane = lanes[Math.floor(Math.random() * lanes.length)];
+      let maxMinDist = -1;
+      for (const candidateLane of lanes) {
+        let minDist = 9999;
+        for (const existing of activeEntities) {
+          const d = Math.abs(existing.baseY !== undefined ? existing.baseY - candidateLane : existing.y - candidateLane);
+          if (d < minDist) minDist = d;
+        }
+        if (minDist > maxMinDist) {
+          maxMinDist = minDist;
+          bestLane = candidateLane;
+        }
+      }
+
+      y = bestLane + (Math.random() - 0.5) * 26;
+      y = Math.max(topBound, Math.min(bottomBound, y));
+
+      if (Math.random() < 0.5) {
+        x = -type.radius - 35;
+        vx = speed;
+        dir = 1;
+      } else {
+        x = g.width + type.radius + 35;
+        vx = -speed;
+        dir = -1;
+      }
+    }
+
+    g.birds.push({
+      key,
+      type,
+      x,
+      y,
+      baseY: y,
+      vx,
+      vy,
+      dir,
+      hp: type.hp,
+      maxHp: type.hp,
+      radius: type.radius,
+      points: type.points,
+      isDangerous: type.isDangerous,
+      isUfo: type.isUfo,
+      penaltyPercent: type.penaltyPercent,
+      phase: Math.random() * Math.PI * 2,
+      wingPhase: Math.random() * Math.PI * 2,
+      age: 0,
+      spawnTime: performance.now(),
+      alive: true,
+      dying: false,
+      dyingTimer: 0,
+      maxDyingTime: 0.95,
+      rot: 0,
+      rotSpeed: 0,
+    });
+  };
+
+  // Perform single shot raycast
+  const performSingleShot = (x: number, y: number) => {
+    const g = gameRef.current;
+    const sys = audioSysRef.current;
+
+    // Check if player clicked a falling power-up capsule
+    for (const p of g.powerUps) {
+      if (p.collected) continue;
+      const dist = Math.hypot(p.x - x, p.y - y);
+      if (dist <= p.radius + 18) {
+        p.collected = true;
+        g.powerUpsCollected++;
+        const duration = p.type === 'shield' ? 10 : p.type === 'multi_shot' ? 8 : 6;
+        g.activePowerUp = {
+          type: p.type,
+          duration,
+          maxDuration: duration,
+        };
+        setActiveBuff(g.activePowerUp);
+        playSoundPowerUpCollect(sys);
+
+        const nameMap: Record<PowerUpType, string> = {
+          slow_mo: '⏱️ CHRONO SLOW-MO (6s)',
+          multi_shot: '🎯 TRIPLE MULTI-SHOT (8s)',
+          shield: '🛡️ GUARDIAN SHIELD (10s)',
+        };
+        showToast(`${nameMap[p.type]} ACTIVATED!`);
+
+        g.floatingTexts.push({
+          x: p.x,
+          y: p.y - 20,
+          text: nameMap[p.type],
+          color: '#38bdf8',
+          life: 1.3,
+          maxLife: 1.3,
+          size: 15,
+        });
+        return;
+      }
+    }
+
+    let hitTarget: any = null;
+    let isCritical = false;
+
+    for (let i = g.birds.length - 1; i >= 0; i--) {
+      const b = g.birds[i];
+      if (!b.alive || b.dying) continue;
+      const dx = b.x - x;
+      const dy = b.y - y;
+      const dist = Math.hypot(dx, dy);
+      if (dist <= b.radius + 14) {
+        hitTarget = b;
+        // Critical bullseye check
+        if (dist <= b.radius * 0.38) {
+          isCritical = true;
+        }
+        break;
+      }
+    }
+
+    if (hitTarget) {
+      g.shotsHit++;
+      if (isCritical) {
+        g.criticalHits++;
+        playSoundCriticalHit(sys);
+      }
+
+      // Record reaction time
+      if (hitTarget.spawnTime) {
+        const reactionMs = performance.now() - hitTarget.spawnTime;
+        g.reactionTimes.push(reactionMs);
+      }
+
+      hitTarget.hp--;
+      if (hitTarget.hp > 0) {
+        playSoundHit(sys);
+        g.floatingTexts.push({
+          x: hitTarget.x,
+          y: hitTarget.y - 12,
+          text: '🛡️ HIT!',
+          color: '#cbd5e1',
+          life: 0.6,
+          maxLife: 0.6,
+        });
+      } else {
+        // Destroyed target
+        hitTarget.dying = true;
+        hitTarget.dyingTimer = 0;
+        hitTarget.maxDyingTime = 0.9;
+        hitTarget.vx = hitTarget.vx * 0.25;
+        hitTarget.vy = 80;
+        hitTarget.rot = 0;
+        hitTarget.rotSpeed = (hitTarget.dir >= 0 ? 1 : -1) * (5 + Math.random() * 3);
+
+        // Track Birds Hunted
+        if (!hitTarget.isDangerous && hitTarget.key !== 'plane') {
+          g.birdsHunted++;
+        }
+
+        // Check if UFO hit -> triggers 2s EMP blackout
+        if (hitTarget.key === 'ufo') {
+          g.ufoKills++;
+          const ufoBonus = Math.floor(200 * g.multiplier * (isCritical ? 2.5 : 1)); // 5:1 scaled (1000 -> 200)
+          g.score += ufoBonus;
+          g.combo += 2;
+          g.multiplier = Math.min(12, Math.max(1, Math.floor(g.combo / 2) + 1));
+          g.highestCombo = Math.max(g.highestCombo, g.combo);
+
+          // Trigger 2-second blackout on UFO hit
+          g.blankoutTimer = 2.0;
+          playSoundUfoExplode(sys);
+          playSoundUfoEmp(sys);
+          showToast(`🛸 UFO DESTROYED! +${ufoBonus.toLocaleString()} PTS & EMP BLACKOUT (2s)!`);
+
+          g.floatingTexts.push({
+            x: hitTarget.x,
+            y: hitTarget.y - 15,
+            text: `🛸 +${ufoBonus} UFO EMP!`,
+            color: '#22c55e',
+            life: 1.4,
+            maxLife: 1.4,
+            size: 16,
+          });
+
+          if (gameMode === 'MULTIPLAYER' && activeMultiRoom?.id) {
+            sendRoomSabotage(activeMultiRoom.id, isHostPlayer, 'blackout', data.playerName || 'Player');
+          }
+        }
+        // Check if Dangerous Bird Hit
+        else if (hitTarget.isDangerous) {
+          // If Guardian Shield is active, shield absorbs the hazard!
+          if (g.activePowerUp?.type === 'shield') {
+            g.activePowerUp = null;
+            setActiveBuff(null);
+            showToast('🛡️ GUARDIAN SHIELD BLOCKED HAZARD PENALTY!');
+            g.floatingTexts.push({
+              x: hitTarget.x,
+              y: hitTarget.y - 15,
+              text: '🛡️ BLOCKED!',
+              color: '#10b981',
+              life: 1.2,
+              maxLife: 1.2,
+              size: 16,
+            });
+          } else {
+            const penaltyPct = hitTarget.penaltyPercent || 25;
+            const lostScore = Math.floor(g.score * (penaltyPct / 100));
+            g.score = Math.max(0, g.score - lostScore);
+            g.combo = 0;
+            g.multiplier = 1;
+            setShowCombo(false);
+            g.lives--;
+            setLives(g.lives);
+
+            playSoundDangerPenalty(sys, penaltyPct);
+            showToast(
+              hitTarget.key === 'skull_50'
+                ? `☠️ CURSED RAVEN HIT! -50% SCORE & -1 ❤️ HEART!`
+                : `⚠️ HAZARD BIRD HIT! -25% SCORE & -1 ❤️ HEART!`
+            );
+
+            g.floatingTexts.push({
+              x: hitTarget.x,
+              y: hitTarget.y - 15,
+              text: penaltyPct === 50 ? '☠️ -50% & -1 ❤️' : '⚠️ -25% & -1 ❤️',
+              color: penaltyPct === 50 ? '#ef4444' : '#f59e0b',
+              life: 1.3,
+              maxLife: 1.3,
+              size: 16,
+            });
+
+            if (g.lives <= 0) {
+              finishMatch();
+              return;
+            }
+          }
+        }
+        // Plane or Standard Bird Hit
+        else {
+          const isPlane = hitTarget.key === 'plane';
+          const basePts = isPlane ? 100 : hitTarget.points; // 5:1 scaled (Plane 500 -> 100)
+          const pts = Math.floor(basePts * g.multiplier * (isCritical ? 2.5 : 1));
+          g.score += pts;
+          g.combo++;
+          g.multiplier = Math.min(12, Math.max(1, Math.floor(g.combo / 2) + 1));
+          g.highestCombo = Math.max(g.highestCombo, g.combo);
+
+          if (isPlane) {
+            playSoundBonusPlane(sys);
+          } else {
+            playSoundHit(sys);
+            if (g.combo >= 3) {
+              playSoundCombo(sys);
+              setComboText(`🔥 COMBO x${g.multiplier}`);
+              setShowCombo(true);
+            }
+          }
+
+          g.floatingTexts.push({
+            x: hitTarget.x,
+            y: hitTarget.y - 12,
+            text: isCritical ? `🎯 CRIT +${pts}` : `+${pts}`,
+            color: isCritical ? '#facc15' : '#fef08a',
+            life: isCritical ? 0.95 : 0.75,
+            maxLife: isCritical ? 0.95 : 0.75,
+            size: isCritical ? 16 : 14,
+          });
+
+          // Check if Rare / Armored / Small bird drops a Temporary Power-Up Capsule (~60% chance)
+          if (
+            (hitTarget.key === 'rare' || hitTarget.key === 'armored' || hitTarget.key === 'small') &&
+            Math.random() < 0.65
+          ) {
+            const types: PowerUpType[] = ['slow_mo', 'multi_shot', 'shield'];
+            const chosenType = types[Math.floor(Math.random() * types.length)];
+            g.powerUps.push({
+              id: Math.random().toString(),
+              type: chosenType,
+              x: hitTarget.x,
+              y: hitTarget.y,
+              vy: 65,
+              radius: 18,
+              life: 9.0,
+              maxLife: 9.0,
+              bobPhase: Math.random() * Math.PI * 2,
+              collected: false,
+            });
+            playSoundPowerUpSpawn(sys);
+          }
+        }
+
+        // USER INSTRUCTION: Extra Life awarded at 40,000 points and multiples (5:1 scaled)!
+        const current40kBracket = Math.floor(g.score / 40000);
+        if (current40kBracket > g.lastAwarded40kMultiplier) {
+          const milestonesGained = current40kBracket - g.lastAwarded40kMultiplier;
+          g.lastAwarded40kMultiplier = current40kBracket;
+          g.lives += milestonesGained;
+          setLives(g.lives);
+          playSoundExtraLife(sys);
+          showToast(`💖 +1 EXTRA LIFE! ${(current40kBracket * 40).toLocaleString()},000 Points Milestone!`);
+
+          g.floatingTexts.push({
+            x: g.width / 2,
+            y: g.height * 0.35,
+            text: `💖 +1 EXTRA LIFE! (${(current40kBracket * 40).toLocaleString()}k)`,
+            color: '#f43f5e',
+            life: 1.8,
+            maxLife: 1.8,
+            size: 20,
+          });
+        }
+
+        // Particle effect
+        const pCount = isCritical ? 30 : 20;
+        for (let i = 0; i < pCount; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const spd = (isCritical ? 75 : 50) + Math.random() * (isCritical ? 200 : 160);
+          g.particles.push({
+            x: hitTarget.x,
+            y: hitTarget.y,
+            vx: Math.cos(angle) * spd,
+            vy: Math.sin(angle) * spd,
+            life: 0.35 + Math.random() * 0.45,
+            maxLife: 0.8,
+            size: 2 + Math.random() * 3.5,
+            color: hitTarget.type.color || '#ffffff',
+            alive: true,
+          });
+        }
+
+        setScore(g.score);
+        setMultiplier(g.multiplier);
+      }
+    } else {
+      // Missed shot
+      g.combo = 0;
+      g.multiplier = 1;
+      setShowCombo(false);
+      setMultiplier(1);
+    }
+  };
+
+  const shootAt = (x: number, y: number) => {
+    const g = gameRef.current;
+    const now = performance.now();
+    if (now - g.pointer.lastShot < 85) return;
+    g.pointer.lastShot = now;
+
+    g.shotsFired++;
+    playSoundShoot(audioSysRef.current);
+
+    // Multi-shot power-up fires 3 spread shots
+    if (g.activePowerUp?.type === 'multi_shot') {
+      performSingleShot(x, y);
+      performSingleShot(Math.max(10, x - 28), y);
+      performSingleShot(Math.min(g.width - 10, x + 28), y);
+    } else {
+      performSingleShot(x, y);
+    }
+  };
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (gameState !== 'PLAYING') return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.max(
+      0,
+      Math.min(gameRef.current.width, ((e.clientX - rect.left) / rect.width) * gameRef.current.width)
+    );
+    const y = Math.max(
+      0,
+      Math.min(gameRef.current.height, ((e.clientY - rect.top) / rect.height) * gameRef.current.height)
+    );
+    gameRef.current.pointer.x = x;
+    gameRef.current.pointer.y = y;
+    gameRef.current.pointer.active = true;
+    shootAt(x, y);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.max(
+      0,
+      Math.min(gameRef.current.width, ((e.clientX - rect.left) / rect.width) * gameRef.current.width)
+    );
+    const y = Math.max(
+      0,
+      Math.min(gameRef.current.height, ((e.clientY - rect.top) / rect.height) * gameRef.current.height)
+    );
+    gameRef.current.pointer.x = x;
+    gameRef.current.pointer.y = y;
+  };
+
+  const handlePointerUp = () => {
+    gameRef.current.pointer.active = false;
+  };
+
+  // End of match summary computation
+  const finishMatch = () => {
+    const g = gameRef.current;
+    stopBackgroundMusic(audioSysRef.current);
+    playSoundGameOver(audioSysRef.current);
+
+    const finalScore = g.score;
+    const newBest = Math.max(data.best || 0, finalScore);
+    setBestScore(newBest);
+
+    const playerName = data.playerName || 'Player';
+    const newScores = [...(data.scores || []), { name: playerName, score: finalScore, date: new Date().toISOString() }]
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 30);
+
+    const updated = {
+      ...data,
+      best: newBest,
+      scores: newScores,
+    };
+    setData(updated);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+
+    // Update Lifetime Stats
+    const totalReaction = g.reactionTimes.reduce((a, b) => a + b, 0);
+    const avgReaction = g.reactionTimes.length > 0 ? totalReaction / g.reactionTimes.length : 450;
+    const accuracy = g.shotsFired > 0 ? Math.round((g.shotsHit / g.shotsFired) * 100) : 100;
+
+    const newLifetime: LifetimeStats = {
+      lifetimeHeadshots: lifetimeStats.lifetimeHeadshots + g.criticalHits,
+      lifetimeBirdsSaved: lifetimeStats.lifetimeBirdsSaved + g.birdsSaved,
+      lifetimeBirdsHunted: lifetimeStats.lifetimeBirdsHunted + g.birdsHunted,
+      totalGamesPlayed: lifetimeStats.totalGamesPlayed + 1,
+      bestAccuracy: Math.max(lifetimeStats.bestAccuracy, accuracy),
+      fastestReactionMs: Math.min(lifetimeStats.fastestReactionMs, avgReaction),
+    };
+    setLifetimeStats(newLifetime);
+    saveLifetimeStats(newLifetime);
+
+    // Prepare match summary object
+    const matchSummary: MatchPerformanceStats = {
+      score: finalScore,
+      bestScore: newBest,
+      birdsHunted: g.birdsHunted,
+      lifetimeBirdsHunted: newLifetime.lifetimeBirdsHunted,
+      headshots: g.criticalHits,
+      lifetimeHeadshots: newLifetime.lifetimeHeadshots,
+      birdsSaved: g.birdsSaved,
+      lifetimeBirdsSaved: newLifetime.lifetimeBirdsSaved,
+      avgReactionTimeMs: avgReaction,
+      shotsFired: g.shotsFired,
+      shotsHit: g.shotsHit,
+      accuracy,
+      highestCombo: g.highestCombo,
+      ufoKills: g.ufoKills,
+      powerUpsCollected: g.powerUpsCollected,
+      gameMode,
+      rivalName,
+      rivalScore,
+    };
+    setSummaryStats(matchSummary);
+    setGameState('SUMMARY');
+
+    // Submit score to Firestore
+    submitScoreToFirestore(playerName, finalScore);
+
+    if (gameMode === 'MULTIPLAYER' && activeMultiRoom?.id) {
+      completeMultiplayerMatch(activeMultiRoom.id);
+    }
+  };
+
+  // Main Canvas Render Loop
+  useEffect(() => {
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    let running = true;
+
+    const loop = (timestamp: number) => {
+      if (!running) return;
+      const g = gameRef.current;
+      const dt = Math.min(0.05, (timestamp - g.lastTime) / 1000);
+      g.lastTime = timestamp;
+
+      if (gameState === 'PLAYING') {
+        g.elapsed += dt;
+        g.spawnTimer -= dt;
+        g.planeTimer -= dt;
+        g.ufoTimer -= dt;
+
+        // Difficulty interval scales with BIRDS HUNTED
+        const diff = getDifficultyFactor(g.birdsHunted);
+        const baseInterval = 1.3 - diff * 0.85;
+        if (g.spawnTimer <= 0) {
+          spawnEntity();
+          g.spawnTimer = baseInterval * (0.85 + Math.random() * 0.35);
+        }
+
+        // Update Weather
+        updateWeatherCycle(dt, g, (w) => setCurrentWeather(w));
+
+        // Update Power-Ups
+        for (const p of g.powerUps) {
+          p.life -= dt;
+          p.y += p.vy * dt;
+          p.bobPhase += dt * 4;
+        }
+        g.powerUps = g.powerUps.filter((p) => !p.collected && p.life > 0 && p.y < g.height + 40);
+
+        // Update Active Buff
+        if (g.activePowerUp) {
+          g.activePowerUp.duration -= dt;
+          if (g.activePowerUp.duration <= 0) {
+            g.activePowerUp = null;
+            setActiveBuff(null);
+          } else {
+            setActiveBuff({ ...g.activePowerUp });
+          }
+        }
+
+        // Decrement screen blackout timer
+        if (g.blankoutTimer > 0) {
+          g.blankoutTimer = Math.max(0, g.blankoutTimer - dt);
+        }
+
+        // Update Flying Entities
+        const speedModifier = g.activePowerUp?.type === 'slow_mo' ? 0.45 : 1.0;
+
+        for (const entity of g.birds) {
+          if (!entity.alive) continue;
+          if (entity.biteTimer > 0) entity.biteTimer -= dt;
+
+          if (entity.dying) {
+            entity.dyingTimer += dt;
+            entity.vy += 650 * dt;
+            entity.x += entity.vx * dt;
+            entity.y += entity.vy * dt;
+            entity.rot += entity.rotSpeed * dt;
+
+            if (entity.dyingTimer >= entity.maxDyingTime || entity.y > g.height + 120) {
+              entity.alive = false;
+            }
+            continue;
+          }
+
+          entity.age += dt;
+          entity.wingPhase += dt * 12;
+          entity.x += entity.vx * dt * speedModifier;
+          entity.y += entity.vy * dt * speedModifier;
+
+          if (entity.key === 'ufo') {
+            entity.y += Math.sin(entity.age * 4.5 + entity.phase) * 32 * dt;
+          } else if (entity.type.pattern === 'sine') {
+            entity.y += Math.sin(entity.age * 3.5 + entity.phase) * 35 * dt;
+          } else if (entity.type.pattern === 'zigzag') {
+            entity.y += Math.sign(Math.sin(entity.age * 5 + entity.phase)) * 55 * dt;
+          } else if (entity.type.pattern === 'wave') {
+            entity.y += Math.sin(entity.age * 2.5 + entity.phase) * 60 * dt;
+          }
+
+          // Offscreen escape check
+          if (entity.x < -120 || entity.x > g.width + 120 || entity.y < -150 || entity.y > g.height + 150) {
+            entity.alive = false;
+
+            // USER INSTRUCTION: If player misses UFO (or it escapes), reduce score by 5%!
+            if (entity.key === 'ufo') {
+              const lost = Math.floor(g.score * 0.05);
+              g.score = Math.max(0, g.score - lost);
+              setScore(g.score);
+              showToast(`🛸 UFO ESCAPED! -5% SCORE PENALTY (-${lost.toLocaleString()} PTS)!`);
+              playSoundDangerPenalty(audioSysRef.current, 25);
+            } else {
+              const isExempt = entity.key === 'small' || entity.isDangerous || entity.key === 'plane';
+              if (!isExempt) {
+                g.lives--;
+                playSoundEscape(audioSysRef.current);
+                g.combo = 0;
+                g.multiplier = 1;
+                setShowCombo(false);
+                setMultiplier(1);
+                setLives(g.lives);
+              }
+            }
+          }
+        }
+
+        // Predator mechanic: Cursed Raven eats scoring birds
+        const activePredators = g.birds.filter((b) => b.alive && !b.dying && b.key === 'skull_50');
+        const activePrey = g.birds.filter(
+          (b) => b.alive && !b.dying && !b.isDangerous && b.key !== 'plane' && b.key !== 'ufo'
+        );
+
+        for (const predator of activePredators) {
+          for (const prey of activePrey) {
+            if (!prey.alive || prey.dying) continue;
+            const dist = Math.hypot(predator.x - prey.x, predator.y - prey.y);
+            if (dist < predator.radius + prey.radius + 6) {
+              prey.alive = false;
+              prey.dying = true;
+              prey.maxDyingTime = 0.2;
+              playSoundChomp(audioSysRef.current);
+              showToast('🩸 RED CURSED RAVEN DEVOURED A BIRD!');
+            }
+          }
+        }
+
+        // Filter dead entities & update particles
+        g.birds = g.birds.filter((b) => b.alive);
+
+        for (const p of g.particles) {
+          p.life -= dt;
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+          if (p.life <= 0) p.alive = false;
+        }
+        g.particles = g.particles.filter((p) => p.alive);
+
+        for (const ft of g.floatingTexts) {
+          ft.life -= dt;
+          ft.y -= 35 * dt;
+        }
+        g.floatingTexts = g.floatingTexts.filter((ft) => ft.life > 0);
+
+        if (g.lives <= 0) {
+          finishMatch();
+        }
+      }
+
+      // Canvas Rendering
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.clearRect(0, 0, g.width, g.height);
+
+          // Sky Gradient
+          const skyGradient = ctx.createLinearGradient(0, 0, 0, g.height);
+          skyGradient.addColorStop(0, '#38bdf8');
+          skyGradient.addColorStop(0.5, '#60a5fa');
+          skyGradient.addColorStop(1, '#2563eb');
+          ctx.fillStyle = skyGradient;
+          ctx.fillRect(0, 0, g.width, g.height);
+
+          // Sun glow
+          ctx.save();
+          const sunGrad = ctx.createRadialGradient(g.width * 0.85, 60, 10, g.width * 0.85, 60, 140);
+          sunGrad.addColorStop(0, 'rgba(255, 255, 255, 0.45)');
+          sunGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+          ctx.fillStyle = sunGrad;
+          ctx.beginPath();
+          ctx.arc(g.width * 0.85, 60, 140, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+
+          // Soft Drifting Clouds (NO human face clouds)
+          ctx.save();
+          ctx.globalAlpha = 0.88;
+          for (let i = 0; i < 6; i++) {
+            const cx = ((i * 160 + g.elapsed * 15) % (g.width + 220)) - 110;
+            const cy = 60 + (i % 3) * 45;
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.ellipse(cx, cy, 54, 18, 0, 0, Math.PI * 2);
+            ctx.ellipse(cx - 28, cy - 4, 30, 18, 0, 0, Math.PI * 2);
+            ctx.ellipse(cx + 26, cy - 2, 32, 17, 0, 0, Math.PI * 2);
+            ctx.ellipse(cx, cy - 10, 26, 16, 0, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.restore();
+
+          // Hills
+          ctx.fillStyle = 'rgba(21, 128, 61, 0.45)';
+          ctx.beginPath();
+          ctx.moveTo(0, g.height);
+          ctx.lineTo(0, g.height - 45);
+          for (let x = 0; x <= g.width; x += 35) {
+            ctx.lineTo(x, g.height - 35 - Math.sin(x * 0.025 + 1.2) * 16);
+          }
+          ctx.lineTo(g.width, g.height);
+          ctx.closePath();
+          ctx.fill();
+
+          // Render Entities
+          for (const entity of g.birds) {
+            if (!entity.alive) continue;
+            ctx.save();
+            ctx.translate(entity.x, entity.y);
+
+            if (entity.dying) {
+              const fade = Math.max(0, 1 - (entity.dyingTimer / entity.maxDyingTime) * 0.75);
+              ctx.globalAlpha = fade;
+              ctx.rotate(entity.rot);
+            } else {
+              if (entity.dir < 0) ctx.scale(-1, 1);
+            }
+
+            const r = entity.radius;
+
+            if (entity.key === 'ufo') {
+              // 20% Smaller UFO Alien Saucer
+              const discGrad = ctx.createLinearGradient(-r * 1.4, 0, r * 1.4, 0);
+              discGrad.addColorStop(0, '#0f172a');
+              discGrad.addColorStop(0.2, '#0891b2');
+              discGrad.addColorStop(0.5, '#e0f2fe');
+              discGrad.addColorStop(0.8, '#0891b2');
+              discGrad.addColorStop(1, '#0f172a');
+              ctx.fillStyle = discGrad;
+              ctx.beginPath();
+              ctx.ellipse(0, r * 0.08, r * 1.35, r * 0.45, 0, 0, Math.PI * 2);
+              ctx.fill();
+
+              // Glass Dome
+              const domeGrad = ctx.createRadialGradient(0, -r * 0.22, 2, 0, -r * 0.22, r * 0.65);
+              domeGrad.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
+              domeGrad.addColorStop(0.4, 'rgba(103, 232, 249, 0.85)');
+              domeGrad.addColorStop(1, 'rgba(14, 116, 144, 0.9)');
+              ctx.fillStyle = domeGrad;
+              ctx.beginPath();
+              ctx.ellipse(0, -r * 0.2, r * 0.68, r * 0.52, 0, Math.PI, 0);
+              ctx.fill();
+
+              // Alien Pilot
+              ctx.fillStyle = '#22c55e';
+              ctx.beginPath();
+              ctx.arc(0, -r * 0.25, r * 0.24, 0, Math.PI * 2);
+              ctx.fill();
+
+              // Alien Eyes
+              ctx.fillStyle = '#0f172a';
+              ctx.beginPath();
+              ctx.ellipse(-r * 0.09, -r * 0.27, r * 0.07, r * 0.1, -0.3, 0, Math.PI * 2);
+              ctx.ellipse(r * 0.09, -r * 0.27, r * 0.07, r * 0.1, 0.3, 0, Math.PI * 2);
+              ctx.fill();
+
+              // Orbiting LED Lights
+              const ledColors = ['#f43f5e', '#fbbf24', '#22c55e', '#38bdf8', '#a855f7'];
+              for (let k = 0; k < 6; k++) {
+                const angle = (k / 6) * Math.PI * 2 + entity.age * 5.5;
+                const lx = Math.cos(angle) * r * 1.15;
+                const ly = r * 0.08 + Math.sin(angle) * r * 0.35;
+                ctx.fillStyle = ledColors[k % ledColors.length];
+                ctx.beginPath();
+                ctx.arc(lx, ly, 2.8, 0, Math.PI * 2);
+                ctx.fill();
+              }
+            } else if (entity.key === 'plane') {
+              // High Polish Supersonic Aeroplane
+              drawDetailedAeroplane(ctx, entity, g.elapsed);
+            } else {
+              // High Polish Layered Feather Bird
+              drawDetailedBird(ctx, entity, g.elapsed);
+            }
+
+            ctx.restore();
+          }
+
+          // Draw Power-Up Capsules
+          drawPowerUpCapsules(ctx, g.powerUps);
+
+          // Draw Weather Atmosphere & Particles
+          drawWeatherAtmosphere(ctx, g);
+
+          // Draw Particles
+          for (const p of g.particles) {
+            if (!p.alive) continue;
+            ctx.save();
+            ctx.globalAlpha = p.life / p.maxLife;
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+          }
+
+          // Draw Floating Score Texts
+          for (const ft of g.floatingTexts) {
+            ctx.save();
+            ctx.globalAlpha = Math.min(1, ft.life * 1.5);
+            ctx.fillStyle = ft.color || '#fef08a';
+            ctx.font = `black ${ft.size || 14}px sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.7)';
+            ctx.shadowBlur = 4;
+            ctx.fillText(ft.text, ft.x, ft.y);
+            ctx.restore();
+          }
+
+          // 2-Second Screen Blackout (when UFO is hit or Sabotage triggers)
+          if (gameState === 'PLAYING' && g.blankoutTimer > 0) {
+            ctx.save();
+            ctx.fillStyle = 'rgba(2, 6, 23, 0.98)';
+            ctx.fillRect(0, 0, g.width, g.height);
+
+            // Scanlines
+            ctx.strokeStyle = 'rgba(34, 197, 94, 0.16)';
+            ctx.lineWidth = 1;
+            for (let ly = 0; ly < g.height; ly += 6) {
+              ctx.beginPath();
+              ctx.moveTo(0, ly);
+              ctx.lineTo(g.width, ly);
+              ctx.stroke();
+            }
+
+            ctx.fillStyle = '#ef4444';
+            ctx.font = 'black 16px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('⚡ ALIEN UFO EMP BLACKOUT (2s)!', g.width / 2, g.height * 0.42);
+
+            ctx.fillStyle = '#38bdf8';
+            ctx.font = 'bold 12px sans-serif';
+            ctx.fillText(`SCREEN BLACKOUT: ${g.blankoutTimer.toFixed(1)}s (BIRDS FLYING!)`, g.width / 2, g.height * 0.48);
+
+            ctx.restore();
+          }
+
+          // Crosshair
+          if (gameState === 'PLAYING') {
+            ctx.save();
+            ctx.translate(g.pointer.x, g.pointer.y);
+            ctx.strokeStyle = g.blankoutTimer > 0 ? '#ef4444' : 'rgba(255, 255, 255, 0.95)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(0, 0, 16, 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.fillStyle = '#fbbf24';
+            ctx.beginPath();
+            ctx.arc(0, 0, 3, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.moveTo(-25, 0);
+            ctx.lineTo(-6, 0);
+            ctx.moveTo(6, 0);
+            ctx.lineTo(25, 0);
+            ctx.moveTo(0, -25);
+            ctx.lineTo(0, -6);
+            ctx.moveTo(0, 6);
+            ctx.lineTo(0, 25);
+            ctx.stroke();
+            ctx.restore();
+          }
+        }
+      }
+
+      // FPS tracking
+      if (data.settings.fps) {
+        g.fpsCounter++;
+        g.fpsTime += dt;
+        if (g.fpsTime >= 0.5) {
+          setFpsDisplay(`${Math.round(g.fpsCounter / g.fpsTime)} FPS`);
+          g.fpsCounter = 0;
+          g.fpsTime = 0;
+        }
+      }
+
+      gameRef.current.animFrameId = requestAnimationFrame(loop);
+    };
+
+    gameRef.current.animFrameId = requestAnimationFrame(loop);
+
+    return () => {
+      running = false;
+      window.removeEventListener('resize', handleResize);
+      cancelAnimationFrame(gameRef.current.animFrameId);
+      stopBackgroundMusic(audioSysRef.current);
+    };
+  }, [gameState, data.settings]);
+
+  return (
+    <div
+      id="app"
+      className="w-full h-screen flex flex-col relative select-none overflow-hidden bg-gradient-to-b from-[#1e40af] via-[#3b82f6] to-[#60a5fa] text-[#0f172a]"
+    >
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-xl bg-black/85 backdrop-blur-md text-white font-bold text-xs shadow-xl border border-white/20 animate-bounce">
+          {toastMessage}
+        </div>
+      )}
+
+      {/* Header HUD */}
+      <header className="flex-none w-full px-3 sm:px-5 py-2 sm:py-2.5 flex justify-between items-center z-10 gap-2 bg-white/20 backdrop-blur-md border-b border-white/20">
+        <div className="flex items-center gap-2">
+          <BirdMascot size={32} />
+          <div>
+            <div className="text-base sm:text-lg font-black tracking-wide text-white drop-shadow-sm flex items-center gap-1.5">
+              <span>SHOOT THE BIRD</span>
+            </div>
+            {/* Live Weather Indicator Badge */}
+            <div className="text-[11px] text-sky-100 font-bold flex items-center gap-1">
+              {currentWeather === 'rain' && <span>🌧️ Gentle Rain</span>}
+              {currentWeather === 'snow' && <span>❄️ Light Snow</span>}
+              {currentWeather === 'drizzle' && <span>🌦️ Misty Drizzle</span>}
+              {currentWeather === 'clear' && <span>☀️ Clear Sky</span>}
+            </div>
+          </div>
+        </div>
+
+        {/* Score & Combo */}
+        <div className="flex gap-2 sm:gap-3 items-center">
+          <div className="bg-white/95 backdrop-blur-md rounded-xl px-2.5 sm:px-4 py-1 sm:py-1.5 text-center shadow-md border border-white/60 min-w-[50px] sm:min-w-[70px]">
+            <strong className="block text-sm sm:text-lg lg:text-xl font-black text-[#0f283d] leading-none">
+              {score.toLocaleString()}
+            </strong>
+            <span className="text-[8px] sm:text-[10px] text-gray-500 font-extrabold tracking-wider leading-none mt-0.5 block">
+              SCORE
+            </span>
+          </div>
+
+          <div className="bg-white/95 backdrop-blur-md rounded-xl px-2.5 sm:px-4 py-1 sm:py-1.5 text-center shadow-md border border-white/60 min-w-[50px] sm:min-w-[70px]">
+            <strong className="block text-sm sm:text-lg lg:text-xl font-black text-[#f97316] leading-none">
+              {Math.max(bestScore, score).toLocaleString()}
+            </strong>
+            <span className="text-[8px] sm:text-[10px] text-gray-500 font-extrabold tracking-wider leading-none mt-0.5 block">
+              BEST
+            </span>
+          </div>
+
+          <div className="bg-white/95 backdrop-blur-md rounded-xl px-2 sm:px-3.5 py-1 sm:py-1.5 text-center shadow-md border border-white/60 min-w-[42px] sm:min-w-[58px]">
+            <strong className="block text-sm sm:text-lg lg:text-xl font-black text-[#2563eb] leading-none">
+              x{multiplier}
+            </strong>
+            <span className="text-[8px] sm:text-[10px] text-gray-500 font-extrabold tracking-wider leading-none mt-0.5 block">
+              COMBO
+            </span>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Canvas Area */}
+      <div
+        id="gameArea"
+        ref={containerRef}
+        className="relative flex-1 min-h-0 w-full flex justify-center items-center px-2 py-1"
+      >
+        <canvas
+          id="gameCanvas"
+          ref={canvasRef}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          className="block rounded-2xl shadow-2xl bg-[#38bdf8] touch-none cursor-crosshair border border-white/40"
+        />
+
+        {/* Active Power-Up HUD Widget */}
+        {activeBuff && gameState === 'PLAYING' && (
+          <div className="absolute top-4 left-4 z-20 px-3 py-1.5 rounded-xl bg-white/90 backdrop-blur-md shadow-lg border border-white/80 flex items-center gap-2">
+            <span className="text-base">
+              {activeBuff.type === 'slow_mo' ? '⏱️' : activeBuff.type === 'multi_shot' ? '🎯' : '🛡️'}
+            </span>
+            <div>
+              <div className="text-[10px] font-black text-gray-800 leading-tight">
+                {activeBuff.type === 'slow_mo' ? 'Slow-Mo' : activeBuff.type === 'multi_shot' ? 'Triple Shot' : 'Guardian Shield'}
+              </div>
+              <div className="w-16 h-1.5 bg-gray-200 rounded-full overflow-hidden mt-0.5">
+                <div
+                  className="h-full bg-indigo-600 transition-all duration-100"
+                  style={{ width: `${(activeBuff.duration / activeBuff.maxDuration) * 100}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Floating In-Game Controls */}
+        <div className="absolute right-4 sm:right-6 top-4 flex items-center gap-2 z-20">
+          <div className="relative">
+            <button
+              onClick={() => setShowVolumePopup(!showVolumePopup)}
+              className="w-10 h-10 rounded-xl bg-white/95 hover:bg-white shadow-md flex items-center justify-center text-lg active:scale-95 transition-transform border border-gray-100"
+              aria-label="Adjust Volume"
+            >
+              {data.settings.musicVolume > 0 || data.settings.soundVolume > 0 ? (
+                <Volume2 className="w-5 h-5 text-indigo-600" />
+              ) : (
+                <VolumeX className="w-5 h-5 text-gray-400" />
+              )}
+            </button>
+
+            {showVolumePopup && (
+              <div className="absolute right-0 top-12 w-60 bg-white/95 backdrop-blur-md rounded-2xl p-4 shadow-2xl border border-gray-200 z-30 animate-in fade-in zoom-in-95">
+                <div className="text-xs font-black text-gray-800 mb-3 flex items-center gap-1.5">
+                  <Music className="w-4 h-4 text-indigo-600" /> In-Game Volume
+                </div>
+                <div className="space-y-3 text-xs">
+                  <div>
+                    <div className="flex justify-between font-bold text-gray-600 mb-1">
+                      <span>Music (Reliever)</span>
+                      <span>{Math.round(data.settings.musicVolume * 100)}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.05"
+                      value={data.settings.musicVolume}
+                      onChange={(e) => handleMusicVolumeChange(parseFloat(e.target.value))}
+                      className="w-full h-2 bg-indigo-100 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                    />
+                  </div>
+                  <div>
+                    <div className="flex justify-between font-bold text-gray-600 mb-1">
+                      <span>Sound Effects</span>
+                      <span>{Math.round(data.settings.soundVolume * 100)}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.05"
+                      value={data.settings.soundVolume}
+                      onChange={(e) => handleSoundVolumeChange(parseFloat(e.target.value))}
+                      className="w-full h-2 bg-emerald-100 rounded-lg appearance-none cursor-pointer accent-emerald-600"
+                    />
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowVolumePopup(false)}
+                  className="mt-3 w-full py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-lg text-[11px]"
+                >
+                  Done
+                </button>
+              </div>
+            )}
+          </div>
+
+          <button
+            onClick={() => gameState === 'PLAYING' && setGameState('PAUSED')}
+            className="w-10 h-10 rounded-xl bg-white/95 hover:bg-white shadow-md flex items-center justify-center text-lg active:scale-95 transition-transform border border-gray-100"
+            aria-label="Pause"
+          >
+            <Pause className="w-5 h-5 text-gray-800" />
+          </button>
+
+          <button
+            onClick={() => setGameState(gameState === 'PLAYING' ? 'SETTINGS_PAUSED' : 'SETTINGS')}
+            className="w-10 h-10 rounded-xl bg-white/95 hover:bg-white shadow-md flex items-center justify-center text-lg active:scale-95 transition-transform border border-gray-100"
+            aria-label="Settings"
+          >
+            <SettingsIcon className="w-5 h-5 text-gray-800" />
+          </button>
+        </div>
+
+        {/* Hearts at Centre Bottom */}
+        {gameState === 'PLAYING' && (
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/95 backdrop-blur-md shadow-xl border border-white/80 animate-in fade-in">
+            <span className="text-[11px] font-extrabold text-gray-600 uppercase tracking-wider mr-0.5">LIVES</span>
+            <div className="flex gap-1.5 text-lg">
+              {Array.from({ length: Math.max(0, lives) }).map((_, i) => (
+                <span key={i} className="animate-pulse">
+                  ❤️
+                </span>
+              ))}
+              {Array.from({ length: Math.max(0, 3 - lives) }).map((_, i) => (
+                <span key={i} className="opacity-30 grayscale">
+                  🖤
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Combo Badge */}
+        {showCombo && (
+          <div className="absolute left-6 bottom-5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-[#ffd166] to-[#f97316] text-[#351a00] font-black text-sm shadow-lg z-20 animate-bounce">
+            {comboText}
+          </div>
+        )}
+
+        {/* FPS counter */}
+        {data.settings.fps && (
+          <div className="absolute left-4 top-16 px-2 py-1 rounded bg-black/50 text-white text-[10px] font-mono z-20">
+            {fpsDisplay}
+          </div>
+        )}
+
+        {/* Modals */}
+        {gameState === 'MENU' && (
+          <MainMenuModal
+            playerName={data.playerName}
+            onRequestStart={requestStart}
+            onOpenRanks={() => setGameState('RANKS')}
+            onOpenHow={() => setGameState('HOW')}
+            onOpenSettings={() => setGameState('SETTINGS')}
+            onOpenMultiplayer={() => setShowMultiplayerModal(true)}
+          />
+        )}
+
+        {gameState === 'NAME' && (
+          <div className="absolute inset-0 z-50 bg-black/45 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="w-full max-w-[420px] bg-white/95 rounded-3xl p-6 shadow-2xl border border-white/60">
+              <div className="flex items-center gap-3 mb-3">
+                <BirdMascot size={42} />
+                <div>
+                  <h2 className="text-xl font-black text-[#0f283d]">Enter Nickname</h2>
+                  <p className="text-xs text-gray-500">Your score will be logged on the global leaderboard.</p>
+                </div>
+              </div>
+              <div className="mb-4">
+                <input
+                  type="text"
+                  maxLength={20}
+                  value={nameInput}
+                  onChange={(e) => setNameInput(e.target.value)}
+                  placeholder="e.g. AceShooter"
+                  className="w-full p-3 rounded-xl border border-gray-300 font-bold text-base focus:outline-none focus:ring-2 focus:ring-[#f97316] bg-white"
+                  autoFocus
+                />
+              </div>
+              <button
+                onClick={saveName}
+                className="w-full py-3 bg-[#f97316] hover:bg-[#ea580c] text-white font-black rounded-xl shadow-md active:scale-98 transition-transform"
+              >
+                CONTINUE & PLAY
+              </button>
+            </div>
+          </div>
+        )}
+
+        {gameState === 'PAUSED' && (
+          <div className="absolute inset-0 z-50 bg-black/45 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="w-full max-w-[400px] bg-white/95 rounded-3xl p-6 shadow-2xl text-center border border-white/60">
+              <h2 className="text-2xl font-black text-[#0f283d] mb-2">⏸️ Game Paused</h2>
+              <p className="text-xs text-gray-500 mb-5">Take a breather, the skies are waiting for you!</p>
+              <div className="flex flex-col gap-2.5">
+                <button
+                  onClick={() => {
+                    gameRef.current.lastTime = performance.now();
+                    setGameState('PLAYING');
+                  }}
+                  className="w-full py-3 bg-[#f97316] hover:bg-[#ea580c] text-white font-black rounded-xl shadow-md flex items-center justify-center gap-2 active:scale-98"
+                >
+                  <Play className="w-4 h-4 fill-current" /> RESUME
+                </button>
+                <button
+                  onClick={() => setGameState('SETTINGS_PAUSED')}
+                  className="w-full py-2.5 bg-white hover:bg-gray-50 text-[#0f172a] font-bold rounded-xl border border-gray-200 text-xs"
+                >
+                  ⚙️ SETTINGS & AUDIO
+                </button>
+                <button
+                  onClick={() => startGame(gameMode)}
+                  className="w-full py-2.5 bg-white hover:bg-gray-50 text-[#0f172a] font-bold rounded-xl border border-gray-200 text-xs"
+                >
+                  🔄 RESTART GAME
+                </button>
+                <button
+                  onClick={() => setGameState('MENU')}
+                  className="w-full py-2.5 bg-white hover:bg-gray-50 text-[#0f172a] font-bold rounded-xl border border-gray-200 text-xs"
+                >
+                  🏠 MAIN MENU
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {gameState === 'HOW' && (
+          <HowToPlayModal onClose={() => setGameState('MENU')} />
+        )}
+
+        {(gameState === 'SETTINGS' || gameState === 'SETTINGS_PAUSED') && (
+          <SettingsModal
+            settings={data.settings}
+            playerName={data.playerName}
+            onSaveSettings={saveSettings}
+            onMusicVolChange={handleMusicVolumeChange}
+            onSoundVolChange={handleSoundVolumeChange}
+            onChangeName={() => setGameState('NAME')}
+            onClose={() => setGameState(gameState === 'SETTINGS_PAUSED' ? 'PAUSED' : 'MENU')}
+          />
+        )}
+
+        {gameState === 'RANKS' && (
+          <LeaderboardModal
+            globalRanks={globalRanks}
+            localScores={data.scores || []}
+            playerName={data.playerName}
+            onClose={() => setGameState('MENU')}
+          />
+        )}
+
+        {/* End of Match Performance Summary Screen */}
+        {gameState === 'SUMMARY' && summaryStats && (
+          <MatchSummaryModal
+            stats={summaryStats}
+            playerName={data.playerName || 'Player'}
+            onPlayAgain={() => startGame(gameMode)}
+            onOpenLeaderboard={() => setGameState('RANKS')}
+            onShare={() => {
+              const text = `🐦 Scored ${summaryStats.score.toLocaleString()} in Shoot The Bird! (${summaryStats.accuracy}% accuracy, ${summaryStats.headshots} bullseyes!)`;
+              if (navigator.share) {
+                navigator.share({ title: 'Shoot The Bird Stats', text, url: window.location.href }).catch(() => {});
+              } else if (navigator.clipboard) {
+                navigator.clipboard.writeText(text).then(() => showToast('Stats copied to clipboard!'));
+              }
+            }}
+            onMainMenu={() => setGameState('MENU')}
+          />
+        )}
+
+        {/* Multiplayer Lobby Modal */}
+        {showMultiplayerModal && (
+          <MultiplayerModal
+            playerName={data.playerName || 'Player'}
+            onClose={() => setShowMultiplayerModal(false)}
+            onStartDuel={handleStartDuel}
+          />
+        )}
+      </div>
+
+      {/* Footer */}
+      <footer className="flex-none text-center py-1.5 text-[11px] text-white font-bold bg-black/20 backdrop-blur-xs">
+        Tap birds to shoot • 🛸 UFO Encounters • ⚡ Collect Power-Ups • ⚠️ Avoid Hazard Birds • Relax & Enjoy
+      </footer>
+    </div>
+  );
+}
